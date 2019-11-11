@@ -1,0 +1,15 @@
+Queries
+ - Track how many people used a hashtag in some time period, track who used the hashtag
+   - #sharetheforce, https://developer.twitter.com/en/case-studies/target.html
+ - Track who is tweeting about Hilton (e.g.)
+   - https://developer.twitter.com/en/case-studies/hilton.html
+ - Categorize people (e.g. geographic location, gender, language, etc.) that support a specific artist, or like a specific product
+   - https://developer.twitter.com/en/case-studies/universal-music-group.html
+
+ - propagation of events in time and space (how does it spread geographically over time)
+ - sentiment analysis: are people positively or negatively responding to ideas?
+ - rate of change of tweeting on a topic - when does the tweeting suddenly peak
+ - how many followers do the people who tweet/retweet a topic have
+ - group hashtags that are very similar (edit distance)
+
+
