@@ -8,10 +8,17 @@
 #include <vector>
 using namespace simdjson;
 
-cJSON *build_cjson(ParsedJson::Iterator &pjh);
+cJSON *BuildCJSON(ParsedJson::Iterator &pjh);
+cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
+                        std::vector<std::string> &cur_stack);
 
 const char *filename = "single_tweet.json";
-const std::vector<std::vector<std::string>> keys_to_keep = {{"a", "b"}, {"c"}};
+const std::vector<std::vector<std::string>> keys_to_keep = {
+    {"created_at"},
+    {"text"},
+    {"user", "id"},
+    {"user", "screen_name"},
+    {"user", "followers_count"}};
 int main() {
   std::ifstream in(filename);
 
@@ -32,14 +39,21 @@ int main() {
 
     // build the four representations
     // 1: cJSON tree
-    cJSON *test = build_cjson(pjh);
+    std::vector<std::string> temp;
+    cJSON *test = BuildCJSON(pjh);
     printf("%s\n", cJSON_PrintUnformatted(test));
     // 2: nested hashmap
     // std::unordered_map<std::string, void *> hashmap = build_hashmap(pjh);
   }
 }
 
-cJSON *build_cjson(ParsedJson::Iterator &pjh) {
+cJSON *BuildCJSON(ParsedJson::Iterator &pjh) {
+  std::vector<std::string> temp;
+  return BuildCJSONHelper(pjh, temp);
+}
+
+cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
+                        std::vector<std::string> &cur_stack) {
   cJSON *ret = NULL;
   if (pjh.is_object()) {
     ret = cJSON_CreateObject();
@@ -54,11 +68,30 @@ cJSON *build_cjson(ParsedJson::Iterator &pjh) {
         // std::copy(pjh.get_string(), pjh.get_string() +
         // pjh.get_string_length(), cur_key.begin());
 
-        // get value
         pjh.next();
-        cJSON *val = build_cjson(pjh); // recurse
-        // add the pair to the object
-        cJSON_AddItemToObject(ret, cur_key.c_str(), val);
+        // get value
+        cur_stack.push_back(cur_key);
+        cJSON *val = BuildCJSONHelper(pjh, cur_stack); // recurse
+
+        // determine whether this key should be part of the final representation
+        bool should_insert = false;
+        for (int i = 0; !should_insert && i < keys_to_keep.size(); i++) {
+          if (cur_stack.size() <= keys_to_keep[i].size()) {
+            bool good = true;
+            for (int j = 0; good && j < cur_stack.size(); j++) {
+              if (cur_stack[j] != keys_to_keep[i][j])
+                good = false;
+            }
+            if (good)
+              should_insert = true;
+          }
+        }
+        cur_stack.pop_back();
+
+        // add the pair to the object if it is desired
+        if (should_insert) {
+          cJSON_AddItemToObject(ret, cur_key.c_str(), val);
+        }
       } while (pjh.next());
       pjh.up();
     }
@@ -66,7 +99,7 @@ cJSON *build_cjson(ParsedJson::Iterator &pjh) {
     ret = cJSON_CreateArray();
     if (pjh.down()) {
       do {
-        cJSON *val = build_cjson(pjh); // recurse
+        cJSON *val = BuildCJSONHelper(pjh, cur_stack); // recurse
         cJSON_AddItemToArray(ret, val);
       } while (pjh.next());
       pjh.up();
