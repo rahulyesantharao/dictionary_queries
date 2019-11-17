@@ -3,14 +3,24 @@
 #include "simdjson/singleheader/simdjson.h"
 #include <fstream>
 #include <iostream>
+#include <list>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 using namespace simdjson;
 
 cJSON *BuildCJSON(ParsedJson::Iterator &pjh);
 cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
                         std::vector<std::string> &cur_stack);
+
+std::unordered_map<std::string, std::pair<char, void *>> *
+BuildHashmap(ParsedJson::Iterator &pjh);
+void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
+                         std::vector<std::string> &cur_stack);
+void PrintHashmapValue(std::pair<char, void *> val);
+void PrintHashmap(
+    std::unordered_map<std::string, std::pair<char, void *>> *hashmap);
 
 const char *filename = "single_tweet.json";
 const std::vector<std::vector<std::string>> keys_to_keep = {
@@ -41,12 +51,16 @@ int main() {
     // 1: cJSON tree
     std::vector<std::string> temp;
     cJSON *test = BuildCJSON(pjh);
-    printf("%s\n", cJSON_PrintUnformatted(test));
+    std::cout << cJSON_PrintUnformatted(test) << "\n";
     // 2: nested hashmap
-    // std::unordered_map<std::string, void *> hashmap = build_hashmap(pjh);
+    std::unordered_map<std::string, std::pair<char, void *>> *hashmap =
+        BuildHashmap(pjh);
+    PrintHashmap(hashmap);
+    std::cout << "\n";
   }
 }
 
+// CJSON Functions
 cJSON *BuildCJSON(ParsedJson::Iterator &pjh) {
   std::vector<std::string> temp;
   return BuildCJSONHelper(pjh, temp);
@@ -73,7 +87,8 @@ cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
         cur_stack.push_back(cur_key);
         cJSON *val = BuildCJSONHelper(pjh, cur_stack); // recurse
 
-        // determine whether this key should be part of the final representation
+        // determine whether this key should be part of the final
+        // representation
         bool should_insert = false;
         for (int i = 0; !should_insert && i < keys_to_keep.size(); i++) {
           if (cur_stack.size() <= keys_to_keep[i].size()) {
@@ -133,4 +148,171 @@ cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
     }
   }
   return ret;
+}
+
+// Hashmap Functions
+std::unordered_map<std::string, std::pair<char, void *>> *
+BuildHashmap(ParsedJson::Iterator &pjh) {
+  std::vector<std::string> temp;
+  return (std::unordered_map<std::string, std::pair<char, void *>> *)
+      BuildHashmapHelper(pjh, temp);
+}
+
+void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
+                         std::vector<std::string> &cur_stack) {
+  void *ret;
+  if (pjh.is_object()) {
+    std::unordered_map<std::string, std::pair<char, void *>> *hashmap =
+        new std::unordered_map<std::string, std::pair<char, void *>>;
+    ret = (void *)hashmap;
+    if (pjh.down()) {
+      do {
+        // get key
+        std::string cur_key(pjh.get_string());
+
+        // above may cause issues if the string has null characters, consider
+        // something like below
+        // std::string cur_key(pjh.get_string_length());
+        // std::copy(pjh.get_string(), pjh.get_string() +
+        // pjh.get_string_length(), cur_key.begin());
+
+        cur_stack.push_back(cur_key);
+        pjh.next();
+        // get type
+        char type = (char)pjh.get_type();
+        // get value
+        void *val = BuildHashmapHelper(pjh, cur_stack); // recurse
+
+        // determine whether this key should be part of the final
+        // representation
+        bool should_insert = false;
+        for (int i = 0; !should_insert && i < keys_to_keep.size(); i++) {
+          if (cur_stack.size() <= keys_to_keep[i].size()) {
+            bool good = true;
+            for (int j = 0; good && j < cur_stack.size(); j++) {
+              if (cur_stack[j] != keys_to_keep[i][j])
+                good = false;
+            }
+            if (good)
+              should_insert = true;
+          }
+        }
+        cur_stack.pop_back();
+
+        // add the pair to the object if it is desired
+        if (should_insert) {
+          (*hashmap)[cur_key] = std::make_pair(type, val);
+        }
+      } while (pjh.next());
+      pjh.up();
+    }
+  } else if (pjh.is_array()) {
+    std::list<std::pair<char, void *>> *arr =
+        new std::list<std::pair<char, void *>>;
+    ret = (void *)arr;
+    if (pjh.down()) {
+      do {
+        char type = (char)pjh.get_type();
+        void *val = BuildHashmapHelper(pjh, cur_stack); // recurse
+        arr->push_back(std::make_pair(type, val));
+      } while (pjh.next());
+      pjh.up();
+    }
+  } else { // single type
+    switch (pjh.get_type()) {
+    case '"': { // string
+      char *val = new char[pjh.get_string_length()];
+      memcpy(val, pjh.get_string(), pjh.get_string_length());
+      ret = (void *)val;
+    } break;
+    case 'l': {
+      int64_t *val = new int64_t;
+      *val = pjh.get_integer();
+      ret = (void *)val;
+    } break;
+    case 'u': {
+      uint64_t *val = new uint64_t;
+      *val = pjh.get_unsigned_integer();
+      ret = (void *)val;
+    } break;
+    case 'd': {
+      double *val = new double;
+      *val = pjh.get_double();
+      ret = (void *)val;
+    } break;
+    case 'n': // we have a null
+      ret = nullptr;
+      break;
+    case 't':        // we have a true
+      ret = nullptr; // already stored in key string
+      break;
+    case 'f':        // we have a false
+      ret = nullptr; // already stored in key string
+      break;
+    default:
+      std::cerr << "Error in cJSON Parsing!" << std::endl;
+      ret = nullptr;
+    }
+  }
+  return ret;
+}
+
+void PrintHashmap(
+    std::unordered_map<std::string, std::pair<char, void *>> *hashmap) {
+  PrintHashmapValue(std::make_pair('{', (void *)hashmap));
+}
+void PrintHashmapValue(std::pair<char, void *> val) {
+  char type = val.first;
+  void *ptr = val.second;
+  switch (type) {
+  case '{': {
+    std::unordered_map<std::string, std::pair<char, void *>> *hashmap =
+        (std::unordered_map<std::string, std::pair<char, void *>> *)ptr;
+    std::cout << "{";
+    int count = 0;
+    for (std::unordered_map<std::string, std::pair<char, void *>>::iterator it =
+             hashmap->begin();
+         it != hashmap->end(); ++it, ++count) {
+      std::string key = it->first;
+
+      if (count > 0)
+        std::cout << ",";
+      std::cout << "\"" << key << "\":";
+      PrintHashmapValue(it->second);
+    }
+    std::cout << "}";
+  } break;
+  case '[': {
+    std::list<std::pair<char, void *>> *arr =
+        (std::list<std::pair<char, void *>> *)ptr;
+    int count = 0;
+    for (std::list<std::pair<char, void *>>::iterator it = arr->begin();
+         it != arr->end(); ++it, ++count) {
+      if (count > 0)
+        std::cout << ",";
+      PrintHashmapValue(*it);
+    }
+  } break;
+  case '"': // string
+    std::cout << "\"" << (const char *)ptr << "\"";
+    break;
+  case 'l':
+    std::cout << *(int64_t *)ptr;
+    break;
+  case 'u':
+    std::cout << *(uint64_t *)ptr;
+    break;
+  case 'd':
+    std::cout << *(double *)ptr;
+    break;
+  case 'n': // we have a null
+    std::cout << "null";
+    break;
+  case 't': // we have a true
+    std::cout << "true";
+    break;
+  case 'f': // we have a false
+    std::cout << "false";
+    break;
+  }
 }
