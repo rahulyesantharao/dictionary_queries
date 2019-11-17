@@ -5,12 +5,18 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
 #include "cJSON/cJSON.h"
 #include "simdjson/singleheader/simdjson.cpp"
 #include "simdjson/singleheader/simdjson.h"
 using namespace simdjson;
 
-//--- hardcoded cases ---
+///////////////////////////////////////////
+// Hardcoded Parameters
+// Also hardcoded are
+//  - SetFlattenedStructField(...)
+//  - PrintFlattenedStruct(...)
+///////////////////////////////////////////
 const char *filename = "single_tweet.json";
 
 const std::vector<std::vector<std::string>> keys_to_keep = {
@@ -28,7 +34,12 @@ typedef struct {
   int64_t _2_user_followers_count;
 } FlattenedStruct;
 
-//--- functions to build representations
+///////////////////////////////////////////
+// Functions to build various representations
+// Lot of code duplication, leave it like this so that it is easy to change any
+// individual case.
+///////////////////////////////////////////
+
 // build cJSON from simdjson
 cJSON *BuildCJSON(ParsedJson::Iterator &pjh);
 cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
@@ -54,39 +65,9 @@ void SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
                              FlattenedStruct *build);
 void PrintFlattenedStruct(FlattenedStruct *to_print);
 
-int main() {
-  std::ifstream in(filename);
-
-  // parse the input objects one by one
-  std::string line;
-  while (std::getline(in, line)) {
-    // simdjson to validate and parse
-    ParsedJson pj = build_parsed_json(line);
-    if (!pj.is_valid()) {
-      std::cerr << "Invalid JSON: " << pj.get_error_message() << std::endl;
-      return -1;
-    }
-    ParsedJson::Iterator pjh(pj);
-    if (!pjh.is_ok()) {
-      std::cerr << "Parsing Error." << std::endl;
-      return -1;
-    }
-
-    // build the four representations
-    // 1: cJSON tree
-    std::vector<std::string> temp;
-    cJSON *test = BuildCJSON(pjh);
-    std::cout << cJSON_PrintUnformatted(test) << "\n";
-    // 2: nested hashmap
-    Hashmap *hashmap = BuildHashmap(pjh);
-    PrintHashmap(hashmap);
-    std::cout << "\n";
-    // 3: flattened struct
-    FlattenedStruct *fs = BuildFlattenedStruct(pjh);
-    PrintFlattenedStruct(fs);
-    std::cout << "\n";
-  }
-}
+///////////////////////////////////////////
+// Implementations of functions
+///////////////////////////////////////////
 
 // CJSON Functions
 cJSON *BuildCJSON(ParsedJson::Iterator &pjh) {
@@ -470,4 +451,38 @@ void PrintFlattenedStruct(FlattenedStruct *to_print) {
             << "\",";
   std::cout << "\"user_followers_count\":" << to_print->_2_user_followers_count;
   std::cout << "}";
+}
+
+int main() {
+  std::ifstream in(filename);
+
+  // parse the input objects one by one
+  std::string line;
+  while (std::getline(in, line)) {
+    // simdjson to validate and parse
+    ParsedJson pj = build_parsed_json(line);
+    if (!pj.is_valid()) {
+      std::cerr << "Invalid JSON: " << pj.get_error_message() << std::endl;
+      return -1;
+    }
+    ParsedJson::Iterator pjh(pj);
+    if (!pjh.is_ok()) {
+      std::cerr << "Parsing Error." << std::endl;
+      return -1;
+    }
+
+    // build the four representations
+    // 1: cJSON tree
+    std::vector<std::string> temp;
+    cJSON *test = BuildCJSON(pjh);
+    std::cout << cJSON_PrintUnformatted(test) << "\n";
+    // 2: nested hashmap
+    Hashmap *hashmap = BuildHashmap(pjh);
+    PrintHashmap(hashmap);
+    std::cout << "\n";
+    // 3: flattened struct
+    FlattenedStruct *fs = BuildFlattenedStruct(pjh);
+    PrintFlattenedStruct(fs);
+    std::cout << "\n";
+  }
 }
