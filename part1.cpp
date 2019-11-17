@@ -12,6 +12,7 @@ using namespace simdjson;
 
 //--- hardcoded cases ---
 const char *filename = "single_tweet.json";
+
 const std::vector<std::vector<std::string>> keys_to_keep = {
     {"created_at"},
     {"text"},
@@ -19,11 +20,22 @@ const std::vector<std::vector<std::string>> keys_to_keep = {
     {"user", "screen_name"},
     {"user", "followers_count"}};
 
+typedef struct {
+  char *_1_created_at;
+  char *_1_text;
+  int64_t _2_user_id;
+  char *_2_user_screen_name;
+  int64_t _2_user_followers_count;
+} FlattenedStruct;
+
 //--- functions to build representations
+// build cJSON from simdjson
 cJSON *BuildCJSON(ParsedJson::Iterator &pjh);
 cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
                         std::vector<std::string> &cur_stack);
 
+// Build Hashmap from simdjson
+// typedef the hashmap type, so we can change later
 typedef std::pair<char, void *> Any;
 typedef std::unordered_map<std::string, Any> Hashmap;
 
@@ -32,6 +44,15 @@ void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
                          std::vector<std::string> &cur_stack);
 void PrintHashmapValue(Any val);
 void PrintHashmap(Hashmap *hashmap);
+
+// Build a flattened struct from simdjson
+FlattenedStruct *BuildFlattenedStruct(ParsedJson::Iterator &pjh);
+void *BuildFlattenedStructHelper(ParsedJson::Iterator &pjh,
+                                 std::vector<std::string> &cur_stack,
+                                 FlattenedStruct *build);
+void SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
+                             FlattenedStruct *build);
+void PrintFlattenedStruct(FlattenedStruct *to_print);
 
 int main() {
   std::ifstream in(filename);
@@ -59,6 +80,10 @@ int main() {
     // 2: nested hashmap
     Hashmap *hashmap = BuildHashmap(pjh);
     PrintHashmap(hashmap);
+    std::cout << "\n";
+    // 3: flattened struct
+    FlattenedStruct *fs = BuildFlattenedStruct(pjh);
+    PrintFlattenedStruct(fs);
     std::cout << "\n";
   }
 }
@@ -310,4 +335,146 @@ void PrintHashmapValue(Any val) {
     std::cout << "false";
     break;
   }
+}
+
+// Flattened Struct
+FlattenedStruct *BuildFlattenedStruct(ParsedJson::Iterator &pjh) {
+  FlattenedStruct *ret = new FlattenedStruct;
+  std::vector<std::string> temp;
+  BuildFlattenedStructHelper(pjh, temp, ret);
+  return ret;
+}
+
+void *BuildFlattenedStructHelper(ParsedJson::Iterator &pjh,
+                                 std::vector<std::string> &cur_stack,
+                                 FlattenedStruct *build) {
+  void *ret;
+  if (pjh.is_object()) {
+    ret = nullptr;
+    if (pjh.down()) {
+      do {
+        // get key
+        std::string cur_key(pjh.get_string());
+
+        // above may cause issues if the string has null characters, consider
+        // something like below
+        // std::string cur_key(pjh.get_string_length());
+        // std::copy(pjh.get_string(), pjh.get_string() +
+        // pjh.get_string_length(), cur_key.begin());
+
+        cur_stack.push_back(cur_key);
+        pjh.next();
+        // get type
+        char type = (char)pjh.get_type();
+        // get value
+        void *val =
+            BuildFlattenedStructHelper(pjh, cur_stack, build); // recurse
+        // set the appropriate field of the struct if needed
+        SetFlattenedStructField(cur_stack, std::make_pair(type, val), build);
+        cur_stack.pop_back();
+      } while (pjh.next());
+      pjh.up();
+    }
+  } else if (pjh.is_array()) {
+    // treat an array like a dict with integer indices
+    ret = nullptr;
+    if (pjh.down()) {
+      int index = 0;
+      do {
+        cur_stack.push_back(std::to_string(index));
+        char type = (char)pjh.get_type();
+        void *val =
+            BuildFlattenedStructHelper(pjh, cur_stack, build); // recurse
+        SetFlattenedStructField(cur_stack, std::make_pair(type, val), build);
+        cur_stack.pop_back();
+        index++;
+      } while (pjh.next());
+      pjh.up();
+    }
+  } else { // single type
+    switch (pjh.get_type()) {
+    case '"': { // string
+      char *val = new char[pjh.get_string_length()];
+      memcpy(val, pjh.get_string(), pjh.get_string_length());
+      ret = (void *)val;
+    } break;
+    case 'l': {
+      int64_t *val = new int64_t;
+      *val = pjh.get_integer();
+      ret = (void *)val;
+    } break;
+    case 'u': {
+      uint64_t *val = new uint64_t;
+      *val = pjh.get_unsigned_integer();
+      ret = (void *)val;
+    } break;
+    case 'd': {
+      double *val = new double;
+      *val = pjh.get_double();
+      ret = (void *)val;
+    } break;
+    case 'n': // we have a null
+      ret = nullptr;
+      break;
+    case 't':        // we have a true
+      ret = nullptr; // already stored in type char
+      break;
+    case 'f':        // we have a false
+      ret = nullptr; // already stored in type char
+      break;
+    default:
+      std::cerr << "Error in Struct Parsing!" << std::endl;
+      ret = nullptr;
+    }
+  }
+  return ret;
+}
+
+void SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
+                             FlattenedStruct *build) {
+  // determine whether this key should be part of the final
+  // representation
+  bool should_insert = false;
+  int i;
+  for (i = 0; !should_insert && i < keys_to_keep.size(); i++) {
+    if (cur_stack.size() == keys_to_keep[i].size()) {
+      bool good = true;
+      for (int j = 0; good && j < cur_stack.size(); j++) {
+        if (cur_stack[j] != keys_to_keep[i][j])
+          good = false;
+      }
+      if (good) {
+        should_insert = true;
+        break;
+      }
+    }
+  }
+
+  // add the pair to the object if it is desired
+  if (should_insert) {
+    switch (i) {
+    case 0:
+      build->_1_created_at = (char *)val.second;
+      break;
+    case 1:
+      build->_1_text = (char *)val.second;
+    case 2:
+      build->_2_user_id = *(int64_t *)val.second;
+    case 3:
+      build->_2_user_screen_name = (char *)val.second;
+    case 4:
+      build->_2_user_followers_count = *(int64_t *)val.second;
+    }
+  }
+}
+
+void PrintFlattenedStruct(FlattenedStruct *to_print) {
+  std::cout << "{";
+  std::cout << "\"created_at\":\"" << to_print->_1_created_at << "\",";
+  std::cout << "\"text\":\"" << to_print->_1_text << "\",";
+  std::cout << "\"user_id\":" << to_print->_2_user_id << ",";
+  std::cout << "\"user_screen_name\":\"" << to_print->_2_user_screen_name
+            << "\",";
+  std::cout << "\"user_followers_count\":" << to_print->_2_user_followers_count;
+  std::cout << "}";
 }
