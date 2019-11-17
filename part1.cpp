@@ -10,18 +10,7 @@
 #include <vector>
 using namespace simdjson;
 
-cJSON *BuildCJSON(ParsedJson::Iterator &pjh);
-cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
-                        std::vector<std::string> &cur_stack);
-
-std::unordered_map<std::string, std::pair<char, void *>> *
-BuildHashmap(ParsedJson::Iterator &pjh);
-void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
-                         std::vector<std::string> &cur_stack);
-void PrintHashmapValue(std::pair<char, void *> val);
-void PrintHashmap(
-    std::unordered_map<std::string, std::pair<char, void *>> *hashmap);
-
+//--- hardcoded cases ---
 const char *filename = "single_tweet.json";
 const std::vector<std::vector<std::string>> keys_to_keep = {
     {"created_at"},
@@ -29,6 +18,21 @@ const std::vector<std::vector<std::string>> keys_to_keep = {
     {"user", "id"},
     {"user", "screen_name"},
     {"user", "followers_count"}};
+
+//--- functions to build representations
+cJSON *BuildCJSON(ParsedJson::Iterator &pjh);
+cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
+                        std::vector<std::string> &cur_stack);
+
+typedef std::pair<char, void *> Any;
+typedef std::unordered_map<std::string, Any> Hashmap;
+
+Hashmap *BuildHashmap(ParsedJson::Iterator &pjh);
+void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
+                         std::vector<std::string> &cur_stack);
+void PrintHashmapValue(Any val);
+void PrintHashmap(Hashmap *hashmap);
+
 int main() {
   std::ifstream in(filename);
 
@@ -53,8 +57,7 @@ int main() {
     cJSON *test = BuildCJSON(pjh);
     std::cout << cJSON_PrintUnformatted(test) << "\n";
     // 2: nested hashmap
-    std::unordered_map<std::string, std::pair<char, void *>> *hashmap =
-        BuildHashmap(pjh);
+    Hashmap *hashmap = BuildHashmap(pjh);
     PrintHashmap(hashmap);
     std::cout << "\n";
   }
@@ -151,19 +154,16 @@ cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
 }
 
 // Hashmap Functions
-std::unordered_map<std::string, std::pair<char, void *>> *
-BuildHashmap(ParsedJson::Iterator &pjh) {
+Hashmap *BuildHashmap(ParsedJson::Iterator &pjh) {
   std::vector<std::string> temp;
-  return (std::unordered_map<std::string, std::pair<char, void *>> *)
-      BuildHashmapHelper(pjh, temp);
+  return (Hashmap *)BuildHashmapHelper(pjh, temp);
 }
 
 void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
                          std::vector<std::string> &cur_stack) {
   void *ret;
   if (pjh.is_object()) {
-    std::unordered_map<std::string, std::pair<char, void *>> *hashmap =
-        new std::unordered_map<std::string, std::pair<char, void *>>;
+    Hashmap *hashmap = new Hashmap;
     ret = (void *)hashmap;
     if (pjh.down()) {
       do {
@@ -207,8 +207,7 @@ void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
       pjh.up();
     }
   } else if (pjh.is_array()) {
-    std::list<std::pair<char, void *>> *arr =
-        new std::list<std::pair<char, void *>>;
+    std::list<Any> *arr = new std::list<Any>;
     ret = (void *)arr;
     if (pjh.down()) {
       do {
@@ -257,22 +256,19 @@ void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
   return ret;
 }
 
-void PrintHashmap(
-    std::unordered_map<std::string, std::pair<char, void *>> *hashmap) {
+void PrintHashmap(Hashmap *hashmap) {
   PrintHashmapValue(std::make_pair('{', (void *)hashmap));
 }
-void PrintHashmapValue(std::pair<char, void *> val) {
+void PrintHashmapValue(Any val) {
   char type = val.first;
   void *ptr = val.second;
   switch (type) {
   case '{': {
-    std::unordered_map<std::string, std::pair<char, void *>> *hashmap =
-        (std::unordered_map<std::string, std::pair<char, void *>> *)ptr;
+    Hashmap *hashmap = (Hashmap *)ptr;
     std::cout << "{";
     int count = 0;
-    for (std::unordered_map<std::string, std::pair<char, void *>>::iterator it =
-             hashmap->begin();
-         it != hashmap->end(); ++it, ++count) {
+    for (Hashmap::iterator it = hashmap->begin(); it != hashmap->end();
+         ++it, ++count) {
       std::string key = it->first;
 
       if (count > 0)
@@ -283,11 +279,10 @@ void PrintHashmapValue(std::pair<char, void *> val) {
     std::cout << "}";
   } break;
   case '[': {
-    std::list<std::pair<char, void *>> *arr =
-        (std::list<std::pair<char, void *>> *)ptr;
+    std::list<Any> *arr = (std::list<Any> *)ptr;
     int count = 0;
-    for (std::list<std::pair<char, void *>>::iterator it = arr->begin();
-         it != arr->end(); ++it, ++count) {
+    for (std::list<Any>::iterator it = arr->begin(); it != arr->end();
+         ++it, ++count) {
       if (count > 0)
         std::cout << ",";
       PrintHashmapValue(*it);
