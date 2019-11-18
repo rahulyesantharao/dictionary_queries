@@ -65,6 +65,12 @@ void SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
                              FlattenedStruct *build);
 void PrintFlattenedStruct(FlattenedStruct *to_print);
 
+// Find indices of the relevant fields
+std::vector<ParsedJson::Iterator> *BuildSerialIndexList(ParsedJson::Iterator &pjh);
+void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
+                                std::vector<std::string> &cur_stack,
+                                std::vector<ParsedJson::Iterator> *build);
+
 ///////////////////////////////////////////
 // Implementations of functions
 ///////////////////////////////////////////
@@ -453,6 +459,60 @@ void PrintFlattenedStruct(FlattenedStruct *to_print) {
   std::cout << "}";
 }
 
+std::vector<ParsedJson::Iterator> *BuildSerialIndexList(ParsedJson::Iterator &pjh) {
+  std::vector<ParsedJson::Iterator> *ret = new std::vector<ParsedJson::Iterator>;
+  std::vector<std::string> temp;
+  BuildSerialIndexListHelper(pjh, temp, ret);
+  return ret;
+}
+
+void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
+                                std::vector<std::string> &cur_stack,
+                                std::vector<ParsedJson::Iterator> *build) {
+  if (pjh.is_object()) {
+    if (pjh.down()) {
+      do {
+        // get key
+        std::string cur_key(pjh.get_string());
+
+        // above may cause issues if the string has null characters, consider
+        // something like below
+        // std::string cur_key(pjh.get_string_length());
+        // std::copy(pjh.get_string(), pjh.get_string() +
+        // pjh.get_string_length(), cur_key.begin());
+
+        cur_stack.push_back(cur_key);
+        pjh.next();
+        // get type
+        char type = (char)pjh.get_type();
+        // get value
+        BuildSerialIndexListHelper(pjh, cur_stack, build);  // recurse
+        // set the appropriate field of the struct if needed
+        bool should_insert = false;
+        for (int i = 0; !should_insert && i < keys_to_keep.size(); i++) {
+          if (cur_stack.size() == keys_to_keep[i].size()) {
+            bool good = true;
+            for (int j = 0; good && j < cur_stack.size(); j++) {
+              if (cur_stack[j] != keys_to_keep[i][j]) good = false;
+            }
+            if (good) {
+              should_insert = true;
+              break;
+            }
+          }
+        }
+        if (should_insert) build->push_back(pjh);
+        cur_stack.pop_back();
+      } while (pjh.next());
+      pjh.up();
+    }
+  } else if (pjh.is_array()) {
+    // TODO: treat an array like a dict with integer indices
+  } else {  // single type
+    // we don't care, it is not a key
+  }
+}
+
 int main() {
   std::ifstream in(filename);
 
@@ -483,6 +543,10 @@ int main() {
     // 3: flattened struct
     FlattenedStruct *fs = BuildFlattenedStruct(pjh);
     PrintFlattenedStruct(fs);
+    std::cout << "\n";
+    // 4: indices
+    std::vector<ParsedJson::Iterator> *indices = BuildSerialIndexList(pjh);
+    PrintSerialIndexList(pjh);
     std::cout << "\n";
   }
 }
