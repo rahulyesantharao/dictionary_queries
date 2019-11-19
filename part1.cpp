@@ -67,6 +67,8 @@ const std::vector<std::vector<std::string>> keys_to_keep = {
     {"user", "id"},
     {"user", "screen_name"},
     {"user", "followers_count"}};
+std::vector<std::string> key_to_read = keys_to_keep[1];
+typedef int64_t read_key_type;
 
 typedef struct {
   char *_1_created_at;
@@ -86,6 +88,7 @@ typedef struct {
 cJSON *BuildCJSON(ParsedJson::Iterator &pjh);
 cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
                         std::vector<std::string> &cur_stack);
+read_key_type ReadCJSONField(cJSON *);
 
 // Build Hashmap from simdjson
 // typedef the hashmap type, so we can change later
@@ -97,25 +100,30 @@ void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
                          std::vector<std::string> &cur_stack);
 void PrintHashmapValue(Any val);
 void PrintHashmap(Hashmap *hashmap);
+read_key_type ReadHashmapField(Hashmap *hashmap);
+void RecursiveAnyDelete(Any val);
 
 // Build a flattened struct from simdjson
 FlattenedStruct *BuildFlattenedStruct(ParsedJson::Iterator &pjh);
 void *BuildFlattenedStructHelper(ParsedJson::Iterator &pjh,
                                  std::vector<std::string> &cur_stack,
                                  FlattenedStruct *build);
-void SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
+bool SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
                              FlattenedStruct *build);
 void PrintFlattenedStruct(FlattenedStruct *to_print);
+read_key_type ReadFlattenedStructField(FlattenedStruct *fs);
 
 // Find indices of the relevant fields
-std::pair<std::string, std::vector<std::pair<int, int>> *> BuildSerialIndexList(
-    ParsedJson::Iterator &pjh);
-std::string BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
-                                       std::vector<std::string> &cur_stack,
-                                       int &cur_pos, int &len,
-                                       std::vector<std::pair<int, int>> *build);
-void PrintSerialIndexList(
-    std::pair<std::string, std::vector<std::pair<int, int>> *> indices);
+typedef std::pair<std::string *, std::vector<std::pair<int, int>> *>
+    SerialIndexList;
+SerialIndexList BuildSerialIndexList(ParsedJson::Iterator &pjh);
+void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
+                                std::vector<std::string> &cur_stack,
+                                int &cur_pos, int &len,
+                                std::vector<std::pair<int, int>> *build,
+                                std::string *json_string);
+void PrintSerialIndexList(SerialIndexList indices);
+read_key_type ReadSerialIndexList(SerialIndexList indices);
 ///////////////////////////////////////////
 // Implementations of functions
 ///////////////////////////////////////////
@@ -164,7 +172,8 @@ cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
         // add the pair to the object if it is desired
         if (should_insert) {
           cJSON_AddItemToObject(ret, cur_key.c_str(), val);
-        }
+        } else
+          cJSON_Delete(val);
       } while (pjh.next());
       pjh.up();
     }
@@ -214,6 +223,43 @@ Hashmap *BuildHashmap(ParsedJson::Iterator &pjh) {
   return (Hashmap *)BuildHashmapHelper(pjh, temp);
 }
 
+void RecursiveAnyDelete(Any val) {
+  char type = val.first;
+  void *ptr = val.second;
+  switch (type) {
+    case '{': {
+      Hashmap *h = (Hashmap *)ptr;
+      for (Hashmap::iterator it = h->begin(); it != h->end(); ++it) {
+        RecursiveAnyDelete(it->second);
+      }
+      delete h;
+    } break;
+    case '[': {
+      std::list<Any> *l = (std::list<Any> *)ptr;
+      for (std::list<Any>::iterator it = l->begin(); it != l->end(); ++it) {
+        RecursiveAnyDelete(*it);
+      }
+      delete l;
+    } break;
+    case '"':
+      delete[]((char *)ptr);
+      break;
+    case 'l':
+      delete (int64_t *)ptr;
+      break;
+    case 'u':
+      delete (uint64_t *)ptr;
+      break;
+    case 'd':
+      delete (double *)ptr;
+      break;
+    default:
+      if (ptr != nullptr)
+        std::cerr << "Something is wrong in Recursive Any Delete: Type = "
+                  << type << "\n";
+  }
+}
+
 void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
                          std::vector<std::string> &cur_stack) {
   void *ret;
@@ -255,6 +301,8 @@ void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
         // add the pair to the object if it is desired
         if (should_insert) {
           (*hashmap)[cur_key] = std::make_pair(type, val);
+        } else {
+          RecursiveAnyDelete(std::make_pair(type, val));
         }
       } while (pjh.next());
       pjh.up();
@@ -273,8 +321,8 @@ void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
   } else {  // single type
     switch (pjh.get_type()) {
       case '"': {  // string
-        char *val = new char[pjh.get_string_length()];
-        memcpy(val, pjh.get_string(), pjh.get_string_length());
+        char *val = new char[pjh.get_string_length() + 1];
+        memcpy(val, pjh.get_string(), pjh.get_string_length() + 1);
         ret = (void *)val;
       } break;
       case 'l': {
@@ -396,7 +444,23 @@ void *BuildFlattenedStructHelper(ParsedJson::Iterator &pjh,
         void *val =
             BuildFlattenedStructHelper(pjh, cur_stack, build);  // recurse
         // set the appropriate field of the struct if needed
-        SetFlattenedStructField(cur_stack, std::make_pair(type, val), build);
+        if (!SetFlattenedStructField(cur_stack, std::make_pair(type, val),
+                                     build)) {
+          switch (type) {
+            case '"':
+              delete[]((char *)val);
+              break;
+            case 'l':
+              delete (int64_t *)val;
+              break;
+            case 'u':
+              delete (uint64_t *)val;
+              break;
+            case 'd':
+              delete (double *)val;
+              break;
+          }
+        }
         cur_stack.pop_back();
       } while (pjh.next());
       pjh.up();
@@ -411,7 +475,23 @@ void *BuildFlattenedStructHelper(ParsedJson::Iterator &pjh,
         char type = (char)pjh.get_type();
         void *val =
             BuildFlattenedStructHelper(pjh, cur_stack, build);  // recurse
-        SetFlattenedStructField(cur_stack, std::make_pair(type, val), build);
+        if (!SetFlattenedStructField(cur_stack, std::make_pair(type, val),
+                                     build)) {
+          switch (type) {
+            case '"':
+              delete[]((char *)val);
+              break;
+            case 'l':
+              delete (int64_t *)val;
+              break;
+            case 'u':
+              delete (uint64_t *)val;
+              break;
+            case 'd':
+              delete (double *)val;
+              break;
+          }
+        }
         cur_stack.pop_back();
         index++;
       } while (pjh.next());
@@ -420,8 +500,8 @@ void *BuildFlattenedStructHelper(ParsedJson::Iterator &pjh,
   } else {  // single type
     switch (pjh.get_type()) {
       case '"': {  // string
-        char *val = new char[pjh.get_string_length()];
-        memcpy(val, pjh.get_string(), pjh.get_string_length());
+        char *val = new char[pjh.get_string_length() + 1];
+        memcpy(val, pjh.get_string(), pjh.get_string_length() + 1);
         ret = (void *)val;
       } break;
       case 'l': {
@@ -456,7 +536,7 @@ void *BuildFlattenedStructHelper(ParsedJson::Iterator &pjh,
   return ret;
 }
 
-void SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
+bool SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
                              FlattenedStruct *build) {
   // determine whether this key should be part of the final
   // representation
@@ -491,6 +571,7 @@ void SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
         build->_2_user_followers_count = *(int64_t *)val.second;
     }
   }
+  return should_insert;
 }
 
 void PrintFlattenedStruct(FlattenedStruct *to_print) {
@@ -504,41 +585,42 @@ void PrintFlattenedStruct(FlattenedStruct *to_print) {
   std::cout << "}";
 }
 
-std::pair<std::string, std::vector<std::pair<int, int>> *> BuildSerialIndexList(
-    ParsedJson::Iterator &pjh) {
+SerialIndexList BuildSerialIndexList(ParsedJson::Iterator &pjh) {
   std::vector<std::pair<int, int>> *ret = new std::vector<std::pair<int, int>>;
+  std::string *ret_str = new std::string;
   ret->resize(keys_to_keep.size());
   std::vector<std::string> temp;
   int pos = 0;
   int len;
-  std::string final_str = BuildSerialIndexListHelper(pjh, temp, pos, len, ret);
-  return std::make_pair(final_str, ret);
+  BuildSerialIndexListHelper(pjh, temp, pos, len, ret, ret_str);
+  return std::make_pair(ret_str, ret);
 }
 
-std::string BuildSerialIndexListHelper(
-    ParsedJson::Iterator &pjh, std::vector<std::string> &cur_stack,
-    int &cur_pos, int &len, std::vector<std::pair<int, int>> *build) {
-  std::string ret;
+void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
+                                std::vector<std::string> &cur_stack,
+                                int &cur_pos, int &len,
+                                std::vector<std::pair<int, int>> *build,
+                                std::string *json_str) {
   len = cur_pos;
   if (pjh.is_object()) {
-    ret += "{";
+    *json_str += "{";
     cur_pos += 1;
     if (pjh.down()) {
       int index = 0;
       do {
         // deal with commas
         if (index > 0) {
-          ret += ",";
+          *json_str += ",";
           cur_pos += 1;
         }
         index++;
         // get key
         std::string cur_key(pjh.get_string());
-        ret += "\"";
-        ret += cur_key;
-        ret += "\"";
+        *json_str += "\"";
+        *json_str += cur_key;
+        *json_str += "\"";
         cur_pos += cur_key.length();
-        ret += ":";
+        *json_str += ":";
         cur_pos += 3;
 
         // determine whether to use current key
@@ -563,8 +645,8 @@ std::string BuildSerialIndexListHelper(
         // get value
         pjh.next();
         int child_len;
-        ret += BuildSerialIndexListHelper(pjh, cur_stack, cur_pos, child_len,
-                                          build);  // let us recurse
+        BuildSerialIndexListHelper(pjh, cur_stack, cur_pos, child_len, build,
+                                   json_str);  // let us recurse
         if (should_insert) {
           (*build)[i].second = child_len;
         }
@@ -572,77 +654,75 @@ std::string BuildSerialIndexListHelper(
       } while (pjh.next());
       pjh.up();
     }
-    ret += "}";
+    *json_str += "}";
     cur_pos += 1;
   } else if (pjh.is_array()) {
-    ret += "[";
+    *json_str += "[";
     cur_pos += 1;
     if (pjh.down()) {
       int index = 0;
       do {
         if (index > 0) {
-          ret += ",";
+          *json_str += ",";
           cur_pos += 1;
         }
         index++;
         int child_len;
-        ret += BuildSerialIndexListHelper(pjh, cur_stack, cur_pos, child_len,
-                                          build);  // let us recurse
+        BuildSerialIndexListHelper(pjh, cur_stack, cur_pos, child_len, build,
+                                   json_str);  // let us recurse
       } while (pjh.next());
       pjh.up();
     }
-    ret += "]";
+    *json_str += "]";
     cur_pos += 1;
   } else {
     switch (pjh.get_type()) {
       case '"': {  // string
         std::string val(pjh.get_string());
-        ret += "\"";
-        ret += val;
-        ret += "\"";
+        *json_str += "\"";
+        *json_str += val;
+        *json_str += "\"";
         cur_pos += val.length() + 2;
       } break;
       case 'l': {
         std::string val = std::to_string((int64_t)pjh.get_integer());
-        ret += val;
+        *json_str += val;
         cur_pos += val.length();
       } break;
       case 'u': {
         std::string val = std::to_string((uint64_t)pjh.get_integer());
-        ret += val;
+        *json_str += val;
         cur_pos += val.length();
       } break;
       case 'd': {
         std::string val = std::to_string((double)pjh.get_integer());
-        ret += val;
+        *json_str += val;
         cur_pos += val.length();
       } break;
       case 'n': {  // we have a null
         std::string val = "null";
-        ret += val;
+        *json_str += val;
         cur_pos += val.length();
       } break;
       case 't': {  // we have a true
         std::string val = "true";
-        ret += val;
+        *json_str += val;
         cur_pos += val.length();
       } break;
       case 'f': {  // we have a false
         std::string val = "false";
-        ret += val;
+        *json_str += val;
         cur_pos += val.length();
       } break;
       default:
         std::cerr << "Error in List Index Parsing!" << std::endl;
-        ret = "";
+        *json_str += "";
     }
   }
   len = cur_pos - len;
-  return ret;
 }
 
-void PrintSerialIndexList(
-    std::pair<std::string, std::vector<std::pair<int, int>> *> indices) {
+void PrintSerialIndexList(SerialIndexList indices) {
   for (int i = 0; i < indices.second->size(); ++i) {
     int pos = (*indices.second)[i].first;
     int len = (*indices.second)[i].second;
@@ -651,7 +731,7 @@ void PrintSerialIndexList(
       if (j > 0) key += "_";
       key += keys_to_keep[i][j];
     }
-    std::cout << "\"" << key << "\": " << indices.first.substr(pos, len)
+    std::cout << "\"" << key << "\": " << indices.first->substr(pos, len)
               << "\n";
   }
 }
@@ -686,9 +766,8 @@ int main(int argc, char *argv[]) {
   FlattenedStruct **arr;
   arr = new FlattenedStruct *[num_lines];
 #elif TESTING == 4
-  std::pair<std::string, std::vector<std::pair<int, int>> *> *arr;
-  arr =
-      new std::pair<std::string, std::vector<std::pair<int, int>> *>[num_lines];
+  SerialIndexList *arr;
+  arr = new SerialIndexList[num_lines];
 #else
 #error "Unexpected value of TESTING"
 #endif
@@ -726,8 +805,7 @@ int main(int argc, char *argv[]) {
     arr[index] = fs;
 #elif TESTING == 4
     // 4: indices in serialized rep
-    std::pair<std::string, std::vector<std::pair<int, int>> *> indices =
-        BuildSerialIndexList(pjh);
+    SerialIndexList indices = BuildSerialIndexList(pjh);
     arr[index] = indices;
 #else
 #error "Invalid TESTING value"
