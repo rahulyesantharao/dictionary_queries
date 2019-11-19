@@ -66,19 +66,21 @@ const char *filename = "tweets1.json";
 const std::vector<std::vector<std::string>> keys_to_keep = {
     {"created_at"},
     {"text"},
-    {"user", "id"},
+    {"user", "id_str"},
     {"user", "screen_name"},
-    {"user", "followers_count"}};
-const int key_to_read_index = 2;
+    {"user", "followers_count"},
+    {"quoted_status", "user", "id_str"}};
+const int key_to_read_index = 5;
 std::vector<std::string> key_to_read = keys_to_keep[key_to_read_index];
-typedef int64_t read_key_type;
+typedef char *read_key_type;
 
 typedef struct {
   char *_1_created_at;
   char *_1_text;
-  int64_t _2_user_id;
+  char *_2_user_id_str;
   char *_2_user_screen_name;
   int64_t _2_user_followers_count;
+  char *_3_quoted_status_user_id_str;
 } FlattenedStruct;
 
 ///////////////////////////////////////////
@@ -121,13 +123,32 @@ read_key_type ReadFlattenedStructField(FlattenedStruct *fs);
 typedef std::pair<std::string *, std::vector<std::pair<int, int>> *>
     SerialIndexList;
 SerialIndexList BuildSerialIndexList(ParsedJson::Iterator &pjh);
-void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
+bool BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
                                 std::vector<std::string> &cur_stack,
                                 int &cur_pos, int &len,
                                 std::vector<std::pair<int, int>> *build,
                                 std::string *json_string, int &num_found);
 void PrintSerialIndexList(SerialIndexList indices);
 read_key_type ReadSerialIndexListField(SerialIndexList indices);
+
+/// Helper
+bool ShouldPrune(std::vector<std::string> &cur_stack) {
+  bool should_prune = true;
+  for (int i = 0; should_prune && i < keys_to_keep.size(); i++) {
+    int prefix_len = (cur_stack.size() <= keys_to_keep.size())
+                         ? cur_stack.size()
+                         : keys_to_keep.size();
+    bool good = true;
+    for (int j = 0; good && j < prefix_len; j++) {
+      if (cur_stack[j] != keys_to_keep[i][j]) good = false;
+    }
+    if (good) {
+      should_prune = false;
+    }
+  }
+  return should_prune;
+}
+
 ///////////////////////////////////////////
 // Implementations of functions
 ///////////////////////////////////////////
@@ -146,7 +167,8 @@ cJSON *BuildCJSON(ParsedJson::Iterator &pjh) {
 
 cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
                         std::vector<std::string> &cur_stack, int &num_found) {
-  cJSON *ret = NULL;
+  if (ShouldPrune(cur_stack)) return nullptr;
+  cJSON *ret = nullptr;
   if (pjh.is_object()) {
     ret = cJSON_CreateObject();
     if (pjh.down()) {
@@ -185,8 +207,9 @@ cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
         // add the pair to the object if it is desired
         if (should_insert) {
           cJSON_AddItemToObject(ret, cur_key.c_str(), val);
-        } else
-          cJSON_Delete(val);
+        } else {
+          if (val) cJSON_Delete(val);
+        }
       } while (pjh.next());
       pjh.up();
     }
@@ -234,7 +257,7 @@ read_key_type ReadCJSONField(cJSON *dict) {
   for (int i = 0; i < key_to_read.size(); i++) {
     dict = cJSON_GetObjectItemCaseSensitive(dict, key_to_read[i].c_str());
   }
-  return (read_key_type)dict->valuedouble;
+  return (read_key_type)dict->valuestring;
 }
 
 // Hashmap Functions
@@ -252,6 +275,7 @@ Hashmap *BuildHashmap(ParsedJson::Iterator &pjh) {
 void RecursiveAnyDelete(Any val) {
   char type = val.first;
   void *ptr = val.second;
+  if (!ptr) return;
   switch (type) {
     case '{': {
       Hashmap *h = (Hashmap *)ptr;
@@ -288,6 +312,7 @@ void RecursiveAnyDelete(Any val) {
 
 void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
                          std::vector<std::string> &cur_stack, int &num_found) {
+  if (ShouldPrune(cur_stack)) return nullptr;
   void *ret;
   if (pjh.is_object()) {
     Hashmap *hashmap = new Hashmap;
@@ -446,7 +471,7 @@ read_key_type ReadHashmapField(Hashmap *hashmap) {
   for (int i = 0; i < key_to_read.size(); i++) {
     cur_ptr = (*(Hashmap *)cur_ptr)[key_to_read[i]].second;
   }
-  return *(read_key_type *)cur_ptr;
+  return (read_key_type)cur_ptr;
 }
 
 void DeleteFlattenedStruct(FlattenedStruct *fs) {
@@ -472,6 +497,7 @@ FlattenedStruct *BuildFlattenedStruct(ParsedJson::Iterator &pjh) {
 void *BuildFlattenedStructHelper(ParsedJson::Iterator &pjh,
                                  std::vector<std::string> &cur_stack,
                                  FlattenedStruct *build, int &num_found) {
+  if (ShouldPrune(cur_stack)) return nullptr;
   void *ret;
   if (pjh.is_object()) {
     ret = nullptr;
@@ -614,12 +640,21 @@ bool SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
         break;
       case 1:
         build->_1_text = (char *)val.second;
+        break;
       case 2:
-        build->_2_user_id = *(int64_t *)val.second;
+        build->_2_user_id_str = (char *)val.second;
+        break;
       case 3:
         build->_2_user_screen_name = (char *)val.second;
+        break;
       case 4:
         build->_2_user_followers_count = *(int64_t *)val.second;
+        break;
+      case 5:
+        build->_3_quoted_status_user_id_str = (char *)val.second;
+        break;
+      default:
+        std::cerr << "Error creating flattened struct field\n";
     }
   }
   return should_insert;
@@ -629,15 +664,17 @@ void PrintFlattenedStruct(FlattenedStruct *to_print) {
   std::cout << "{";
   std::cout << "\"created_at\":\"" << to_print->_1_created_at << "\",";
   std::cout << "\"text\":\"" << to_print->_1_text << "\",";
-  std::cout << "\"user_id\":" << to_print->_2_user_id << ",";
+  std::cout << "\"user_id_str\":\"" << to_print->_2_user_id_str << "\",";
   std::cout << "\"user_screen_name\":\"" << to_print->_2_user_screen_name
             << "\",";
-  std::cout << "\"user_followers_count\":" << to_print->_2_user_followers_count;
+  std::cout << "\"user_followers_count\":" << to_print->_2_user_followers_count << ",";
+  std::cout << "\"quoted_status_user_id_str\":\""
+            << to_print->_3_quoted_status_user_id_str << "\"";
   std::cout << "}";
 }
 
 read_key_type ReadFlattenedStructField(FlattenedStruct *fs) {
-  return fs->_2_user_id;
+  return fs->_3_quoted_status_user_id_str;
 }
 
 // Serial Index List
@@ -659,11 +696,12 @@ SerialIndexList BuildSerialIndexList(ParsedJson::Iterator &pjh) {
   }
 }
 
-void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
+bool BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
                                 std::vector<std::string> &cur_stack,
                                 int &cur_pos, int &len,
                                 std::vector<std::pair<int, int>> *build,
                                 std::string *json_str, int &num_found) {
+  if(ShouldPrune(cur_stack)) return false;
   len = cur_pos;
   if (pjh.is_object()) {
     *json_str += "{";
@@ -709,10 +747,18 @@ void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
         // get value
         pjh.next();
         int child_len;
-        BuildSerialIndexListHelper(pjh, cur_stack, cur_pos, child_len, build,
+        bool keep = BuildSerialIndexListHelper(pjh, cur_stack, cur_pos, child_len, build,
                                    json_str, num_found);  // let us recurse
         if (should_insert) {
           (*build)[i].second = child_len;
+        }
+        if(!keep) {
+           //undo stuff
+          int to_del = cur_key.length() + 3;
+          if(index>1) to_del++;
+          cur_pos -= to_del;
+          json_str->resize(cur_pos);
+          index--;
         }
         cur_stack.pop_back();
       } while (pjh.next());
@@ -784,9 +830,13 @@ void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
     }
   }
   len = cur_pos - len;
+return true;
 }
 
 void PrintSerialIndexList(SerialIndexList indices) {
+  std::cout << "Serialized Version:\n";
+  std::cout << *indices.first << "\n";
+  std::cout << "Keys:\n";
   for (int i = 0; i < indices.second->size(); ++i) {
     int pos = (*indices.second)[i].first;
     int len = (*indices.second)[i].second;
@@ -804,7 +854,9 @@ read_key_type ReadSerialIndexListField(SerialIndexList indices) {
   // deserialize key_to_read_index
   int pos = (*indices.second)[key_to_read_index].first;
   int len = (*indices.second)[key_to_read_index].second;
-  return (uint64_t)std::stoll(indices.first->substr(pos, len));
+  char *ret = new char[len - 1];
+  memcpy(ret, indices.first->substr(pos + 1, len - 2).c_str(), len - 1);
+  return ret;
 }
 
 int main(int argc, char *argv[]) {
@@ -904,7 +956,7 @@ int main(int argc, char *argv[]) {
 #elif TESTING == 4
     read_values[i] = ReadSerialIndexListField(arr[i]);
 #endif
-    // std::cout << "READ: " << read_values[i] << "\n";
+     //std::cout << "READ: " << read_values[i] << "\n";
   }
   double time_elapsed = timer.time();
   std::cout << "Time: " << time_elapsed << "s\n";
