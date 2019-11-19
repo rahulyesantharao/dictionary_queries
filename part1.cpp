@@ -12,12 +12,54 @@
 using namespace simdjson;
 
 ///////////////////////////////////////////
+// Timer
+///////////////////////////////////////////
+#include <chrono>
+
+class Timer {
+ private:
+  std::chrono::high_resolution_clock::time_point _start;
+
+ public:
+  Timer() { reset(); }
+
+  /*!
+   * returns time since start of the timer in seconds
+   * @return time in seconds
+   */
+  double time() {
+    auto stop = std::chrono::high_resolution_clock::now();
+
+    double duration =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(stop - _start)
+            .count() /
+        1000000000.0;
+    return duration;
+  }
+
+  void reset() { _start = std::chrono::high_resolution_clock::now(); }
+};
+
+///////////////////////////////////////////
+// Memory Measurement
+///////////////////////////////////////////
+#ifdef MEMORY
+uint64_t total_mem_usage;
+bool track_mem = true;
+void *operator new(size_t size) {
+  if (track_mem) total_mem_usage += (uint64_t)size;
+  void *p = malloc(size);
+  return p;
+}
+#endif
+
+///////////////////////////////////////////
 // Hardcoded Parameters
 // Also hardcoded are
 //  - SetFlattenedStructField(...)
 //  - PrintFlattenedStruct(...)
 ///////////////////////////////////////////
-const char *filename = "single_tweet.json";
+const char *filename = "tweets1.json";
 
 const std::vector<std::vector<std::string>> keys_to_keep = {
     {"created_at"},
@@ -66,11 +108,14 @@ void SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
 void PrintFlattenedStruct(FlattenedStruct *to_print);
 
 // Find indices of the relevant fields
-std::vector<ParsedJson::Iterator> *BuildSerialIndexList(ParsedJson::Iterator &pjh);
-void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
-                                std::vector<std::string> &cur_stack,
-                                std::vector<ParsedJson::Iterator> *build);
-
+std::pair<std::string, std::vector<std::pair<int, int>> *> BuildSerialIndexList(
+    ParsedJson::Iterator &pjh);
+std::string BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
+                                       std::vector<std::string> &cur_stack,
+                                       int &cur_pos, int &len,
+                                       std::vector<std::pair<int, int>> *build);
+void PrintSerialIndexList(
+    std::pair<std::string, std::vector<std::pair<int, int>> *> indices);
 ///////////////////////////////////////////
 // Implementations of functions
 ///////////////////////////////////////////
@@ -459,37 +504,48 @@ void PrintFlattenedStruct(FlattenedStruct *to_print) {
   std::cout << "}";
 }
 
-std::vector<ParsedJson::Iterator> *BuildSerialIndexList(ParsedJson::Iterator &pjh) {
-  std::vector<ParsedJson::Iterator> *ret = new std::vector<ParsedJson::Iterator>;
+std::pair<std::string, std::vector<std::pair<int, int>> *> BuildSerialIndexList(
+    ParsedJson::Iterator &pjh) {
+  std::vector<std::pair<int, int>> *ret = new std::vector<std::pair<int, int>>;
+  ret->resize(keys_to_keep.size());
   std::vector<std::string> temp;
-  BuildSerialIndexListHelper(pjh, temp, ret);
-  return ret;
+  int pos = 0;
+  int len;
+  std::string final_str = BuildSerialIndexListHelper(pjh, temp, pos, len, ret);
+  return std::make_pair(final_str, ret);
 }
 
-void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
-                                std::vector<std::string> &cur_stack,
-                                std::vector<ParsedJson::Iterator> *build) {
+std::string BuildSerialIndexListHelper(
+    ParsedJson::Iterator &pjh, std::vector<std::string> &cur_stack,
+    int &cur_pos, int &len, std::vector<std::pair<int, int>> *build) {
+  std::string ret;
+  len = cur_pos;
   if (pjh.is_object()) {
+    ret += "{";
+    cur_pos += 1;
     if (pjh.down()) {
+      int index = 0;
       do {
+        // deal with commas
+        if (index > 0) {
+          ret += ",";
+          cur_pos += 1;
+        }
+        index++;
         // get key
         std::string cur_key(pjh.get_string());
+        ret += "\"";
+        ret += cur_key;
+        ret += "\"";
+        cur_pos += cur_key.length();
+        ret += ":";
+        cur_pos += 3;
 
-        // above may cause issues if the string has null characters, consider
-        // something like below
-        // std::string cur_key(pjh.get_string_length());
-        // std::copy(pjh.get_string(), pjh.get_string() +
-        // pjh.get_string_length(), cur_key.begin());
-
+        // determine whether to use current key
         cur_stack.push_back(cur_key);
-        pjh.next();
-        // get type
-        char type = (char)pjh.get_type();
-        // get value
-        BuildSerialIndexListHelper(pjh, cur_stack, build);  // recurse
-        // set the appropriate field of the struct if needed
         bool should_insert = false;
-        for (int i = 0; !should_insert && i < keys_to_keep.size(); i++) {
+        int i;
+        for (i = 0; !should_insert && i < keys_to_keep.size(); i++) {
           if (cur_stack.size() == keys_to_keep[i].size()) {
             bool good = true;
             for (int j = 0; good && j < cur_stack.size(); j++) {
@@ -501,23 +557,147 @@ void BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
             }
           }
         }
-        if (should_insert) build->push_back(pjh);
+        if (should_insert) {
+          (*build)[i].first = cur_pos;
+        }
+        // get value
+        pjh.next();
+        int child_len;
+        ret += BuildSerialIndexListHelper(pjh, cur_stack, cur_pos, child_len,
+                                          build);  // let us recurse
+        if (should_insert) {
+          (*build)[i].second = child_len;
+        }
         cur_stack.pop_back();
       } while (pjh.next());
       pjh.up();
     }
+    ret += "}";
+    cur_pos += 1;
   } else if (pjh.is_array()) {
-    // TODO: treat an array like a dict with integer indices
-  } else {  // single type
-    // we don't care, it is not a key
+    ret += "[";
+    cur_pos += 1;
+    if (pjh.down()) {
+      int index = 0;
+      do {
+        if (index > 0) {
+          ret += ",";
+          cur_pos += 1;
+        }
+        index++;
+        int child_len;
+        ret += BuildSerialIndexListHelper(pjh, cur_stack, cur_pos, child_len,
+                                          build);  // let us recurse
+      } while (pjh.next());
+      pjh.up();
+    }
+    ret += "]";
+    cur_pos += 1;
+  } else {
+    switch (pjh.get_type()) {
+      case '"': {  // string
+        std::string val(pjh.get_string());
+        ret += "\"";
+        ret += val;
+        ret += "\"";
+        cur_pos += val.length() + 2;
+      } break;
+      case 'l': {
+        std::string val = std::to_string((int64_t)pjh.get_integer());
+        ret += val;
+        cur_pos += val.length();
+      } break;
+      case 'u': {
+        std::string val = std::to_string((uint64_t)pjh.get_integer());
+        ret += val;
+        cur_pos += val.length();
+      } break;
+      case 'd': {
+        std::string val = std::to_string((double)pjh.get_integer());
+        ret += val;
+        cur_pos += val.length();
+      } break;
+      case 'n': {  // we have a null
+        std::string val = "null";
+        ret += val;
+        cur_pos += val.length();
+      } break;
+      case 't': {  // we have a true
+        std::string val = "true";
+        ret += val;
+        cur_pos += val.length();
+      } break;
+      case 'f': {  // we have a false
+        std::string val = "false";
+        ret += val;
+        cur_pos += val.length();
+      } break;
+      default:
+        std::cerr << "Error in List Index Parsing!" << std::endl;
+        ret = "";
+    }
+  }
+  len = cur_pos - len;
+  return ret;
+}
+
+void PrintSerialIndexList(
+    std::pair<std::string, std::vector<std::pair<int, int>> *> indices) {
+  for (int i = 0; i < indices.second->size(); ++i) {
+    int pos = (*indices.second)[i].first;
+    int len = (*indices.second)[i].second;
+    std::string key;
+    for (int j = 0; j < keys_to_keep[i].size(); j++) {
+      if (j > 0) key += "_";
+      key += keys_to_keep[i][j];
+    }
+    std::cout << "\"" << key << "\": " << indices.first.substr(pos, len)
+              << "\n";
   }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+#ifndef TESTING
+#error Must define a value for TESTING
+#endif
+#ifdef TIME
+  Timer timer;
+#endif
   std::ifstream in(filename);
-
-  // parse the input objects one by one
+  uint64_t num_lines = 0;
   std::string line;
+  while (std::getline(in, line)) {
+    num_lines++;
+  }
+  std::cout << "num lines: " << num_lines << "\n";
+
+  in.clear();
+  in.seekg(0, std::ios::beg);
+
+  // Allocate space in memory for the data
+
+#if TESTING == 1
+  cJSON **arr;
+  arr = new cJSON *[num_lines];
+#elif TESTING == 2
+  Hashmap **arr;
+  arr = new Hashmap *[num_lines];
+#elif TESTING == 3
+  FlattenedStruct **arr;
+  arr = new FlattenedStruct *[num_lines];
+#elif TESTING == 4
+  std::pair<std::string, std::vector<std::pair<int, int>> *> *arr;
+  arr =
+      new std::pair<std::string, std::vector<std::pair<int, int>> *>[num_lines];
+#else
+#error "Unexpected value of TESTING"
+#endif
+
+  // parse the input objects one by one and read them
+  int index = 0;
+#ifdef TIMEBUILD
+  timer.reset();
+#endif
   while (std::getline(in, line)) {
     // simdjson to validate and parse
     ParsedJson pj = build_parsed_json(line);
@@ -532,21 +712,56 @@ int main() {
     }
 
     // build the four representations
+#if TESTING == 1
     // 1: cJSON tree
-    std::vector<std::string> temp;
     cJSON *test = BuildCJSON(pjh);
-    std::cout << cJSON_PrintUnformatted(test) << "\n";
+    arr[index] = test;
+#elif TESTING == 2
     // 2: nested hashmap
     Hashmap *hashmap = BuildHashmap(pjh);
-    PrintHashmap(hashmap);
-    std::cout << "\n";
+    arr[index] = hashmap;
+#elif TESTING == 3
     // 3: flattened struct
     FlattenedStruct *fs = BuildFlattenedStruct(pjh);
-    PrintFlattenedStruct(fs);
-    std::cout << "\n";
-    // 4: indices
-    std::vector<ParsedJson::Iterator> *indices = BuildSerialIndexList(pjh);
-    PrintSerialIndexList(pjh);
-    std::cout << "\n";
+    arr[index] = fs;
+#elif TESTING == 4
+    // 4: indices in serialized rep
+    std::pair<std::string, std::vector<std::pair<int, int>> *> indices =
+        BuildSerialIndexList(pjh);
+    arr[index] = indices;
+#else
+#error "Invalid TESTING value"
+#endif
+    index++;
   }
+#ifdef TIMEBUILD
+  std::cout << "Time: " << timer.time() << "s\n";
+#endif
+#ifdef MEMORY
+  std::cout << "Memory: " << (total_mem_usage / 1000000000.0) << "GB\n";
+#endif
+
+  // Iterate over the data afterwards
+#ifdef VERBOSE
+  for (int i = 0; i < num_lines; i++) {
+#if TESTING == 1
+    std::cout << "\ncJSON tree:\n";
+    std::cout << cJSON_PrintUnformatted(arr[i]) << "\n";
+#elif TESTING == 2
+    std::cout << "\nHashmap\n";
+    PrintHashmap(((Hashmap **)arr)[i]);
+    std::cout << "\n";
+#elif TESTING == 3
+    std::cout << "\nFlattened Struct\n";
+    PrintFlattenedStruct(arr[i]);
+    std::cout << "\n";
+#elif TESTING == 4
+    std::cout << "\nSerial Index List\n";
+    PrintSerialIndexList(arr[i]);
+    std::cout << "\n";
+#else
+#error "Invalid TESTING value"
+#endif
+  }
+#endif
 }
