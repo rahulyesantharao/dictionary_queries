@@ -29,13 +29,13 @@ testing=$2
 # compile correct version of code
 if [ $mode -eq 1 ]; then
   echo "Timing Test"
-  g++ -std=c++17 -DTESTING=$testing -DTIME -DTIMEBUILD cJSON/cJSON.c part1.cpp -o prog
+  g++ -std=c++17 -O3 -DTESTING=$testing -DTIME -DTIMEBUILD cJSON/cJSON.c part1.cpp -o prog
 elif [ $mode -eq 2 ]; then
   echo "Memory Test"
-  g++ -std=c++17 -DTESTING=$testing -DMEMORY cJSON/cJSON.c part1.cpp -o prog
+  g++ -std=c++17 -O3 -DTESTING=$testing -DMEMORY cJSON/cJSON.c part1.cpp -o prog
 else
   echo "Access Test"
-  g++ -std=c++17 -DTESTING=$testing -DTIME -DTIMEACCESS cJSON/cJSON.c part1.cpp -o prog
+  g++ -std=c++17 -O3 -DTESTING=$testing -DTIME -DTIMEACCESS cJSON/cJSON.c part1.cpp -o prog
 fi
 echo "Compiled"
 
