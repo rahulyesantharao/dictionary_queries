@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-dataset = "Twitter"
-measurement_type = 3
+dataset = "Yelp"
+measurement_type = 2
 
 if dataset == "Twitter":
     data_color = "#00ACEE"
@@ -46,6 +46,32 @@ if dataset == "Twitter":
             [8.1029e-05, 6.9883e-05, 7.2022e-05, 6.6906e-05, 6.8536e-05],  # Flattened
             [0.000412709, 0.000566911, 0.000538181, 0.000453178, 0.000469591],  # Serial
         ]
+else:
+    if measurement_type == 1:
+        # build times (s)
+        data = [
+            [1.73398, 1.72179, 1.724, 1.73254, 1.86075],  # cJSON
+            [1.85346, 1.82056, 1.94068, 1.91775, 1.94603],  # Hashmap
+            [1.28618, 1.29548, 1.2893, 1.27132, 1.29573],  # Flattened
+            [1.82456, 1.79112, 1.8409, 1.79255, 1.92643],  # Serial
+        ]
+    elif measurement_type == 2:
+        # memory usage (gb)
+        data = [
+            [15.5749],  # cJSON
+            [16.1627],  # Hashmap
+            [15.7537],  # Flattened
+            [16.3762],  # Serial
+        ]
+    elif measurement_type == 3:
+        # access times (s)
+        data = [
+            [0.0900067, 0.0918825, 0.0865787, 0.0867644, 0.090767],  # cJSON
+            [0.105753, 0.100917, 0.111943, 0.101232, 0.108309],  # Hashmap
+            [0.00911501, 0.00909086, 0.010269, 0.00950721, 0.00959589],  # Flattened
+            [0.121833, 0.122215, 0.126536, 0.120718, 0.133192],  # Serial
+        ]
+
 
 if __name__ == "__main__":
     avg = [np.mean(d) for d in data]

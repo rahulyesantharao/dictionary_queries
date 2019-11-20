@@ -61,6 +61,8 @@ void *operator new(size_t size) {
 //  - ReadSerialIndexListField(...) (and to a lesser extent, the other Read
 //  functions)
 ///////////////////////////////////////////
+// Twitter
+#ifdef TWITTER
 const char *filename = "tweets_test.json";
 
 const std::vector<std::vector<std::string>> keys_to_keep = {
@@ -82,6 +84,26 @@ typedef struct {
   int64_t _2_user_followers_count;
   char *_3_quoted_status_user_id_str;
 } FlattenedStruct;
+
+#else
+// Yelp
+const char *filename = "yelp_tip_test.json";
+
+const std::vector<std::vector<std::string>> keys_to_keep = {
+    {"user_id"}, {"business_id"}, {"text"}, {"date"}, {"compliment_count"},
+};
+const int key_to_read_index = 1;
+std::vector<std::string> key_to_read = keys_to_keep[key_to_read_index];
+typedef char *read_key_type;
+
+typedef struct {
+  char *_1_user_id;
+  char *_1_business_id;
+  char *_1_text;
+  char *_1_date;
+  int64_t _1_compliment_count;
+} FlattenedStruct;
+#endif
 
 ///////////////////////////////////////////
 // Functions to build various representations
@@ -634,6 +656,7 @@ bool SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
 
   // add the pair to the object if it is desired
   if (should_insert) {
+#ifdef TWITTER
     switch (i) {
       case 0:
         build->_1_created_at = (char *)val.second;
@@ -656,25 +679,60 @@ bool SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
       default:
         std::cerr << "Error creating flattened struct field\n";
     }
+#else
+    switch (i) {
+      case 0:
+        build->_1_user_id = (char *)val.second;
+        break;
+      case 1:
+        build->_1_business_id = (char *)val.second;
+        break;
+      case 2:
+        build->_1_text = (char *)val.second;
+        break;
+      case 3:
+        build->_1_date = (char *)val.second;
+        break;
+      case 4:
+        build->_1_compliment_count = *(int64_t *)val.second;
+        break;
+      default:
+        std::cerr << "Error creating flattened struct field\n";
+    }
+#endif
   }
   return should_insert;
 }
 
 void PrintFlattenedStruct(FlattenedStruct *to_print) {
+#ifdef TWITTER
   std::cout << "{";
   std::cout << "\"created_at\":\"" << to_print->_1_created_at << "\",";
   std::cout << "\"text\":\"" << to_print->_1_text << "\",";
   std::cout << "\"user_id_str\":\"" << to_print->_2_user_id_str << "\",";
   std::cout << "\"user_screen_name\":\"" << to_print->_2_user_screen_name
             << "\",";
-  std::cout << "\"user_followers_count\":" << to_print->_2_user_followers_count << ",";
+  std::cout << "\"user_followers_count\":" << to_print->_2_user_followers_count
+            << ",";
   std::cout << "\"quoted_status_user_id_str\":\""
             << to_print->_3_quoted_status_user_id_str << "\"";
   std::cout << "}";
+#else
+  std::cout << "{";
+  std::cout << "\"user_id\":\"" << to_print->_1_user_id << "\",";
+  std::cout << "\"business_id\":\"" << to_print->_1_business_id << "\",";
+  std::cout << "\"text\":\"" << to_print->_1_text << "\",";
+  std::cout << "\"date\":\"" << to_print->_1_date << "\",";
+  std::cout << "\"compliment_count\":" << to_print->_1_compliment_count << "}";
+#endif
 }
 
 read_key_type ReadFlattenedStructField(FlattenedStruct *fs) {
+#ifdef TWITTER
   return fs->_3_quoted_status_user_id_str;
+#else
+  return fs->_1_business_id;
+#endif
 }
 
 // Serial Index List
@@ -701,7 +759,7 @@ bool BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
                                 int &cur_pos, int &len,
                                 std::vector<std::pair<int, int>> *build,
                                 std::string *json_str, int &num_found) {
-  if(ShouldPrune(cur_stack)) return false;
+  if (ShouldPrune(cur_stack)) return false;
   len = cur_pos;
   if (pjh.is_object()) {
     *json_str += "{";
@@ -747,15 +805,16 @@ bool BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
         // get value
         pjh.next();
         int child_len;
-        bool keep = BuildSerialIndexListHelper(pjh, cur_stack, cur_pos, child_len, build,
-                                   json_str, num_found);  // let us recurse
+        bool keep = BuildSerialIndexListHelper(pjh, cur_stack, cur_pos,
+                                               child_len, build, json_str,
+                                               num_found);  // let us recurse
         if (should_insert) {
           (*build)[i].second = child_len;
         }
-        if(!keep) {
-           //undo stuff
+        if (!keep) {
+          // undo stuff
           int to_del = cur_key.length() + 3;
-          if(index>1) to_del++;
+          if (index > 1) to_del++;
           cur_pos -= to_del;
           json_str->resize(cur_pos);
           index--;
@@ -830,7 +889,7 @@ bool BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
     }
   }
   len = cur_pos - len;
-return true;
+  return true;
 }
 
 void PrintSerialIndexList(SerialIndexList indices) {
