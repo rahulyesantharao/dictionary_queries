@@ -61,7 +61,7 @@ void *operator new(size_t size) {
 //  - ReadSerialIndexListField(...) (and to a lesser extent, the other Read
 //  functions)
 ///////////////////////////////////////////
-const char *filename = "tweets1.json";
+const char *filename = "tweets_test.json";
 
 const std::vector<std::vector<std::string>> keys_to_keep = {
     {"created_at"},

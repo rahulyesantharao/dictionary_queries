@@ -2,14 +2,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 dataset = "Twitter"
+measurement_type = 3
+
 if dataset == "Twitter":
     data_color = "#00ACEE"
 elif dataset == "Yelp":
     data_color = "#c41200"
 else:
     print("Invalid dataset")
-
-measurement_type = 1
 
 if measurement_type == 1:
     y_label = "Average Build Time (s)"
@@ -20,12 +20,32 @@ elif measurement_type == 3:
 else:
     print("Invalid Measurement Type!")
 
-data = [
-    [0.12, 0.13, 0.14, 0.11, 0.15],  # cJSON
-    [0.10, 0.09, 0.08, 0.11, 0.10],  # Hashmap
-    [0.23, 0.23, 0.25, 0.24, 0.21],  # Flattened
-    [0.16, 0.17, 0.18, 0.17, 0.16],  # Serial
-]
+if dataset == "Twitter":
+    # Twitter
+    if measurement_type == 1:
+        # build times (s)
+        data = [
+            [0.327528, 0.321072, 0.329142, 0.322101, 0.32107],  # cJSON
+            [0.346682, 0.347806, 0.336928, 0.334666, 0.335561],  # Hashmap
+            [0.337194, 0.324981, 0.332409, 0.328471, 0.324299],  # Flattened
+            [0.362119, 0.356035, 0.352393, 0.350262, 0.350938],  # Serial
+        ]
+    elif measurement_type == 2:
+        # memory usage (gb)
+        data = [
+            [2.30855],  # cJSON
+            [2.32742],  # Hashmap
+            [2.31359],  # Flattened
+            [2.33012],  # Serial
+        ]
+    elif measurement_type == 3:
+        # access times (s)
+        data = [
+            [0.000789718, 0.000730146, 0.000703539, 0.000724039, 0.000874605],  # cJSON
+            [0.00119009, 0.00115043, 0.00115133, 0.00116425, 0.0013829],  # Hashmap
+            [8.1029e-05, 6.9883e-05, 7.2022e-05, 6.6906e-05, 6.8536e-05],  # Flattened
+            [0.000412709, 0.000566911, 0.000538181, 0.000453178, 0.000469591],  # Serial
+        ]
 
 if __name__ == "__main__":
     avg = [np.mean(d) for d in data]
