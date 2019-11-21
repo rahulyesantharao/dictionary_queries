@@ -83,8 +83,8 @@ typedef struct {
   char *_2_user_screen_name;
   int64_t _2_user_followers_count;
   char *_3_quoted_status_user_id_str;
-  std::unordered_map<std::string, void *> offsets;
 } FlattenedStruct;
+std::unordered_map<std::string, int> offsets;
 
 #else
 // Yelp
@@ -103,9 +103,9 @@ typedef struct {
   char *_1_text;
   char *_1_date;
   int64_t _1_compliment_count;
-  std::unordered_map<std::string, void *> offsets;
 } FlattenedStruct;
 #endif
+std::unordered_map<std::string, int> offsets;
 
 ///////////////////////////////////////////
 // Functions to build various representations
@@ -660,33 +660,25 @@ bool SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
   // add the pair to the object if it is desired
   if (should_insert) {
 #ifdef TWITTER
+
     switch (i) {
       case 0:
         build->_1_created_at = (char *)val.second;
-        build->offsets["_1_created_at"] = (void *)&build->_1_created_at;
         break;
       case 1:
         build->_1_text = (char *)val.second;
-        build->offsets["_1_text"] = (void *)&build->_1_text;
         break;
       case 2:
         build->_2_user_id_str = (char *)val.second;
-        build->offsets["_2_user_id_str"] = (void *)&build->_2_user_id_str;
         break;
       case 3:
         build->_2_user_screen_name = (char *)val.second;
-        build->offsets["_2_user_screen_name"] =
-            (void *)&build->_2_user_screen_name;
         break;
       case 4:
         build->_2_user_followers_count = *(int64_t *)val.second;
-        build->offsets["_2_user_followers_count"] =
-            (void *)&build->_2_user_followers_count;
         break;
       case 5:
         build->_3_quoted_status_user_id_str = (char *)val.second;
-        build->offsets["_3_quoted_status_user_id_str"] =
-            (void *)&build->_3_quoted_status_user_id_str;
         break;
       default:
         std::cerr << "Error creating flattened struct field\n";
@@ -695,24 +687,18 @@ bool SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
     switch (i) {
       case 0:
         build->_1_user_id = (char *)val.second;
-        build->offsets["_1_user_id"] = (void *)&build->_1_user_id;
         break;
       case 1:
         build->_1_business_id = (char *)val.second;
-        build->offsets["_1_business_id"] = (void *)&build->_1_business_id;
         break;
       case 2:
         build->_1_text = (char *)val.second;
-        build->offsets["_1_text"] = (void *)&build->_1_text;
         break;
       case 3:
         build->_1_date = (char *)val.second;
-        build->offsets["_1_date"] = (void *)&build->_1_date;
         break;
       case 4:
         build->_1_compliment_count = *(int64_t *)val.second;
-        build->offsets["_1_compliment_count"] =
-            (void *)&build->_1_compliment_count;
         break;
       default:
         std::cerr << "Error creating flattened struct field\n";
@@ -758,8 +744,8 @@ read_key_type ReadFlattenedStructFieldRT(FlattenedStruct *fs) {
   for (int i = 0; i < key_to_read.size(); i++) {
     key += "_";
     key += key_to_read[i];
-    return *(read_key_type *)fs->offsets[key];
   }
+  return *(read_key_type *)((char *)fs + offsets[key]);
 }
 
 // Serial Index List
@@ -973,6 +959,27 @@ int main(int argc, char *argv[]) {
 #elif (TESTING == 3 || TESTING == 5)
   FlattenedStruct **arr;
   arr = new FlattenedStruct *[num_lines];
+  // define the offset maps
+#ifdef TWITTER
+  offsets["_1_created_at"] = ((char *)&arr[0]->_1_created_at - (char *)arr[0])
+      offsets["_1_text"] = ((char *)&arr[0]->_1_text - (char *)arr[0]);
+  offsets["_2_user_id_str"] =
+      ((char *)&arr[0]->_2_user_id_str - (char *)arr[0]);
+  offsets["_2_user_screen_name"] =
+      ((char *)&arr[0]->_2_user_screen_name - (char *)arr[0]);
+  offsets["_2_user_followers_count"] =
+      ((char *)&arr[0]->_2_user_followers_count - (char *)arr[0]);
+  offsets["_3_quoted_status_user_id_str"] =
+      ((char *)&arr[0]->_3_quoted_status_user_id_str - (char *)arr[0]);
+#else
+  offsets["_1_user_id"] = ((char *)&arr[0]->_1_user_id - (char *)arr[0]);
+  offsets["_1_business_id"] =
+      ((char *)&arr[0]->_1_business_id - (char *)arr[0]);
+  offsets["_1_text"] = ((char *)&arr[0]->_1_text - (char *)arr[0]);
+  offsets["_1_date"] = ((char *)&arr[0]->_1_date - (char *)arr[0]);
+  offsets["_1_compliment_count"] =
+      ((char *)&arr[0]->_1_compliment_count - (char *)arr[0]);
+#endif
 #elif TESTING == 4
   SerialIndexList *arr;
   arr = new SerialIndexList[num_lines];

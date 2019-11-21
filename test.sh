@@ -41,5 +41,9 @@ else
 fi
 echo "Compiled"
 
-# run the test (TODO: make it run multiple times)
+# run the test mutiple times to fix any variability
+./prog
+./prog
+./prog
+./prog
 ./prog
