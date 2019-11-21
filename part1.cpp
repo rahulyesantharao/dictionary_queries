@@ -104,8 +104,8 @@ typedef struct {
   char *_1_date;
   int64_t _1_compliment_count;
 } FlattenedStruct;
-#endif
 std::unordered_map<std::string, int> offsets;
+#endif
 
 ///////////////////////////////////////////
 // Functions to build various representations
@@ -961,8 +961,8 @@ int main(int argc, char *argv[]) {
   arr = new FlattenedStruct *[num_lines];
   // define the offset maps
 #ifdef TWITTER
-  offsets["_1_created_at"] = ((char *)&arr[0]->_1_created_at - (char *)arr[0])
-      offsets["_1_text"] = ((char *)&arr[0]->_1_text - (char *)arr[0]);
+  offsets["_1_created_at"] = ((char *)&arr[0]->_1_created_at - (char *)arr[0]);
+  offsets["_1_text"] = ((char *)&arr[0]->_1_text - (char *)arr[0]);
   offsets["_2_user_id_str"] =
       ((char *)&arr[0]->_2_user_id_str - (char *)arr[0]);
   offsets["_2_user_screen_name"] =
