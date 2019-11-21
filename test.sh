@@ -12,8 +12,10 @@ if [ "$1" != "-b" ] && [ "$1" != "-m" ] && [ "$1" != "-a" ]; then
   exit 1
 fi
 if [ $2 -ne 1 ] && [ $2 -ne 2 ] && [ $2 -ne 3 ] && [ $2 -ne 4 ]; then
-  echo "usage: 1 = cJSON, 2 = Hashmap, 3 = Flattened, 4 = Serial"
-  exit 1
+  if [ $2 -ne 5 ] || [ "$1" != "-a" ]; then
+    echo "usage: 1 = cJSON, 2 = Hashmap, 3 = Flattened, 4 = Serial or 5 = Runtime Flattened, for -a"
+    exit 1
+  fi
 fi
 
 # parse parameters
