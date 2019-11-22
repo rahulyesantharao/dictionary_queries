@@ -63,7 +63,7 @@ void *operator new(size_t size) {
 ///////////////////////////////////////////
 // Twitter
 #ifdef TWITTER
-const char *filename = "tweets_test.json";
+const char *filename = "single_tweet.json";
 
 const std::vector<std::vector<std::string>> keys_to_keep = {
     {"created_at"},
@@ -72,9 +72,12 @@ const std::vector<std::vector<std::string>> keys_to_keep = {
     {"user", "screen_name"},
     {"user", "followers_count"},
     {"quoted_status", "user", "id_str"}};
-const int key_to_read_index = 5;
-std::vector<std::string> key_to_read = keys_to_keep[key_to_read_index];
-typedef char *read_key_type;
+const int key1_to_read_index = 2;
+const int key2_to_read_index = 5;
+const std::vector<std::string> key1_to_read = keys_to_keep[key1_to_read_index];
+const std::vector<std::string> key2_to_read = keys_to_keep[key2_to_read_index];
+typedef char *read_key1_type;
+typedef char *read_key2_type;
 
 typedef struct {
   char *_1_created_at;
@@ -93,9 +96,12 @@ const char *filename = "yelp_tip_test.json";
 const std::vector<std::vector<std::string>> keys_to_keep = {
     {"user_id"}, {"business_id"}, {"text"}, {"date"}, {"compliment_count"},
 };
-const int key_to_read_index = 1;
-std::vector<std::string> key_to_read = keys_to_keep[key_to_read_index];
-typedef char *read_key_type;
+const int key1_to_read_index = 1;
+const int key2_to_read_index = 2;
+const std::vector<std::string> key1_to_read = keys_to_keep[key1_to_read_index];
+const std::vector<std::string> key2_to_read = keys_to_keep[key2_to_read_index];
+typedef char *read_key1_type;
+typedef char *read_key2_type;
 
 typedef struct {
   char *_1_user_id;
@@ -117,7 +123,10 @@ std::unordered_map<std::string, int> offsets;
 cJSON *BuildCJSON(ParsedJson::Iterator &pjh);
 cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
                         std::vector<std::string> &cur_stack, int &num_found);
-read_key_type ReadCJSONField(cJSON *);
+read_key2_type ReadCJSONField(cJSON *, read_key1_type &ret_key);
+read_key2_type ReadCJSONFieldRT(cJSON *, read_key1_type &ret_key,
+                                std::vector<std::string> key1,
+                                std::vector<std::string> key2);
 
 // Build Hashmap from simdjson
 // typedef the hashmap type, so we can change later
@@ -129,7 +138,10 @@ void *BuildHashmapHelper(ParsedJson::Iterator &pjh,
                          std::vector<std::string> &cur_stack, int &num_found);
 void PrintHashmapValue(Any val);
 void PrintHashmap(Hashmap *hashmap);
-read_key_type ReadHashmapField(Hashmap *hashmap);
+read_key2_type ReadHashmapField(Hashmap *hashmap, read_key1_type &ret_key);
+read_key2_type ReadHashmapFieldRT(Hashmap *hashmap, read_key1_type &ret_key,
+                                  std::vector<std::string> key1,
+                                  std::vector<std::string> key2);
 void RecursiveAnyDelete(Any val);
 
 // Build a flattened struct from simdjson
@@ -141,8 +153,12 @@ bool SetFlattenedStructField(std::vector<std::string> &cur_stack, Any val,
                              FlattenedStruct *build, int &num_found);
 void DeleteFlattenedStruct(FlattenedStruct *fs);
 void PrintFlattenedStruct(FlattenedStruct *to_print);
-read_key_type ReadFlattenedStructField(FlattenedStruct *fs);
-read_key_type ReadFlattenedStructFieldRT(FlattenedStruct *fs);
+read_key2_type ReadFlattenedStructField(FlattenedStruct *fs,
+                                        read_key1_type &ret_key);
+read_key2_type ReadFlattenedStructFieldRT(FlattenedStruct *fs,
+                                          read_key1_type &ret_key,
+                                          std::vector<std::string> key1,
+                                          std::vector<std::string> key2);
 
 // Find indices of the relevant fields
 typedef std::pair<std::string *, std::vector<std::pair<int, int>> *>
@@ -154,7 +170,12 @@ bool BuildSerialIndexListHelper(ParsedJson::Iterator &pjh,
                                 std::vector<std::pair<int, int>> *build,
                                 std::string *json_string, int &num_found);
 void PrintSerialIndexList(SerialIndexList indices);
-read_key_type ReadSerialIndexListField(SerialIndexList indices);
+read_key2_type ReadSerialIndexListField(SerialIndexList indices,
+                                        read_key1_type &ret_key);
+read_key2_type ReadSerialIndexListFieldRT(SerialIndexList indices,
+                                          read_key1_type &ret_key,
+                                          std::vector<std::string> key1,
+                                          std::vector<std::string> key2);
 
 /// Helper
 bool ShouldPrune(std::vector<std::string> &cur_stack) {
@@ -278,11 +299,36 @@ cJSON *BuildCJSONHelper(ParsedJson::Iterator &pjh,
   return ret;
 }
 
-read_key_type ReadCJSONField(cJSON *dict) {
-  for (int i = 0; i < key_to_read.size(); i++) {
-    dict = cJSON_GetObjectItemCaseSensitive(dict, key_to_read[i].c_str());
+read_key2_type ReadCJSONField(cJSON *dict, read_key1_type &ret_key) {
+  // key 1
+  cJSON *top = dict;
+  for (int i = 0; i < key1_to_read.size(); i++) {
+    top = cJSON_GetObjectItemCaseSensitive(top, key1_to_read[i].c_str());
   }
-  return (read_key_type)dict->valuestring;
+  ret_key = (read_key1_type)top->valuestring;
+  // key 2
+  top = dict;
+  for (int i = 0; i < key2_to_read.size(); i++) {
+    top = cJSON_GetObjectItemCaseSensitive(top, key2_to_read[i].c_str());
+  }
+  return (read_key2_type)top->valuestring;
+}
+
+read_key2_type ReadCJSONFieldRT(cJSON *dict, read_key1_type &ret_key,
+                                std::vector<std::string> key1,
+                                std::vector<std::string> key2) {
+  // key 1
+  cJSON *top = dict;
+  for (int i = 0; i < key1.size(); i++) {
+    top = cJSON_GetObjectItemCaseSensitive(top, key1[i].c_str());
+  }
+  ret_key = (read_key1_type)top->valuestring;
+  // key 2
+  top = dict;
+  for (int i = 0; i < key2.size(); i++) {
+    top = cJSON_GetObjectItemCaseSensitive(top, key2[i].c_str());
+  }
+  return (read_key2_type)top->valuestring;
 }
 
 // Hashmap Functions
@@ -491,12 +537,36 @@ void PrintHashmapValue(Any val) {
   }
 }
 
-read_key_type ReadHashmapField(Hashmap *hashmap) {
+read_key2_type ReadHashmapField(Hashmap *hashmap, read_key1_type &ret_key) {
+  // key 1
   void *cur_ptr = (void *)hashmap;
-  for (int i = 0; i < key_to_read.size(); i++) {
-    cur_ptr = (*(Hashmap *)cur_ptr)[key_to_read[i]].second;
+  for (int i = 0; i < key1_to_read.size(); i++) {
+    cur_ptr = (*(Hashmap *)cur_ptr)[key1_to_read[i]].second;
   }
-  return (read_key_type)cur_ptr;
+  ret_key = (read_key1_type)cur_ptr;
+  // key 2
+  cur_ptr = (void *)hashmap;
+  for (int i = 0; i < key2_to_read.size(); i++) {
+    cur_ptr = (*(Hashmap *)cur_ptr)[key2_to_read[i]].second;
+  }
+  return (read_key2_type)cur_ptr;
+}
+
+read_key2_type ReadHashmapFieldRT(Hashmap *hashmap, read_key1_type &ret_key,
+                                  std::vector<std::string> key1,
+                                  std::vector<std::string> key2) {
+  // key 1
+  void *cur_ptr = (void *)hashmap;
+  for (int i = 0; i < key1.size(); i++) {
+    cur_ptr = (*(Hashmap *)cur_ptr)[key1[i]].second;
+  }
+  ret_key = (read_key1_type)cur_ptr;
+  // key 2
+  cur_ptr = (void *)hashmap;
+  for (int i = 0; i < key2.size(); i++) {
+    cur_ptr = (*(Hashmap *)cur_ptr)[key2[i]].second;
+  }
+  return (read_key2_type)cur_ptr;
 }
 
 void DeleteFlattenedStruct(FlattenedStruct *fs) {
@@ -731,21 +801,33 @@ void PrintFlattenedStruct(FlattenedStruct *to_print) {
 #endif
 }
 
-read_key_type ReadFlattenedStructField(FlattenedStruct *fs) {
+read_key2_type ReadFlattenedStructField(FlattenedStruct *fs,
+                                        read_key1_type &ret_key) {
 #ifdef TWITTER
+  ret_key = fs->_2_user_id_str;
   return fs->_3_quoted_status_user_id_str;
 #else
-  return fs->_1_business_id;
+  ret_key = fs->_1_business_id;
+  return fs->_1_text;
 #endif
 }
 
-read_key_type ReadFlattenedStructFieldRT(FlattenedStruct *fs) {
-  std::string key = "_" + std::to_string(key_to_read.size());
-  for (int i = 0; i < key_to_read.size(); i++) {
-    key += "_";
-    key += key_to_read[i];
+read_key2_type ReadFlattenedStructFieldRT(FlattenedStruct *fs,
+                                          read_key1_type &ret_key,
+                                          std::vector<std::string> key1,
+                                          std::vector<std::string> key2) {
+  std::string key1_str = "_" + std::to_string(key1.size());
+  for (int i = 0; i < key1.size(); i++) {
+    key1_str += "_";
+    key1_str += key1[i];
   }
-  return *(read_key_type *)((char *)fs + offsets[key]);
+  std::string key2_str = "_" + std::to_string(key2.size());
+  for (int i = 0; i < key2.size(); i++) {
+    key2_str += "_";
+    key2_str += key2[i];
+  }
+  ret_key = *(read_key1_type *)((char *)fs + offsets[key1_str]);
+  return *(read_key2_type *)((char *)fs + offsets[key2_str]);
 }
 
 // Serial Index List
@@ -922,13 +1004,52 @@ void PrintSerialIndexList(SerialIndexList indices) {
   }
 }
 
-read_key_type ReadSerialIndexListField(SerialIndexList indices) {
-  // deserialize key_to_read_index
-  int pos = (*indices.second)[key_to_read_index].first;
-  int len = (*indices.second)[key_to_read_index].second;
-  char *ret = new char[len - 1];
-  memcpy(ret, indices.first->substr(pos + 1, len - 2).c_str(), len - 1);
-  return ret;
+read_key2_type ReadSerialIndexListField(SerialIndexList indices,
+                                        read_key1_type &ret_key) {
+  // deserialize
+  int pos = (*indices.second)[key1_to_read_index].first;
+  int len = (*indices.second)[key1_to_read_index].second;
+  char *ret1 = new char[len - 1];
+  memcpy(ret1, indices.first->substr(pos + 1, len - 2).c_str(), len - 1);
+  ret_key = ret1;
+
+  pos = (*indices.second)[key2_to_read_index].first;
+  len = (*indices.second)[key2_to_read_index].second;
+  char *ret2 = new char[len - 1];
+  memcpy(ret2, indices.first->substr(pos + 1, len - 2).c_str(), len - 1);
+  return ret2;
+}
+
+read_key2_type ReadSerialIndexListFieldRT(SerialIndexList indices,
+                                          read_key1_type &ret_key,
+                                          std::vector<std::string> key1,
+                                          std::vector<std::string> key2) {
+  std::string key1_str = "_" + std::to_string(key1.size());
+  for (int i = 0; i < key1.size(); i++) {
+    key1_str += "_";
+    key1_str += key1[i];
+  }
+  std::string key2_str = "_" + std::to_string(key2.size());
+  for (int i = 0; i < key2.size(); i++) {
+    key2_str += "_";
+    key2_str += key2[i];
+  }
+
+  int key1_index = offsets[key1_str];
+  int key2_index = offsets[key2_str];
+
+  // deserialize
+  int pos = (*indices.second)[key1_index].first;
+  int len = (*indices.second)[key1_index].second;
+  char *ret1 = new char[len - 1];
+  memcpy(ret1, indices.first->substr(pos + 1, len - 2).c_str(), len - 1);
+  ret_key = ret1;
+
+  pos = (*indices.second)[key2_index].first;
+  len = (*indices.second)[key2_index].second;
+  char *ret2 = new char[len - 1];
+  memcpy(ret2, indices.first->substr(pos + 1, len - 2).c_str(), len - 1);
+  return ret2;
 }
 
 int main(int argc, char *argv[]) {
@@ -956,7 +1077,7 @@ int main(int argc, char *argv[]) {
 #elif TESTING == 2
   Hashmap **arr;
   arr = new Hashmap *[num_lines];
-#elif (TESTING == 3 || TESTING == 5)
+#elif TESTING == 3
   FlattenedStruct **arr;
   arr = new FlattenedStruct *[num_lines];
   // define the offset maps
@@ -983,6 +1104,20 @@ int main(int argc, char *argv[]) {
 #elif TESTING == 4
   SerialIndexList *arr;
   arr = new SerialIndexList[num_lines];
+#ifdef TWITTER
+  offsets["_1_created_at"] = 0;
+  offsets["_1_text"] = 1;
+  offsets["_2_user_id_str"] = 2;
+  offsets["_2_user_screen_name"] = 3;
+  offsets["_2_user_followers_count"] = 4;
+  offsets["_3_quoted_status_user_id_str"] = 5;
+#else
+  offsets["_1_user_id"] = 0;
+  offsets["_1_business_id"] = 1;
+  offsets["_1_text"] = 2;
+  offsets["_1_date"] = 3;
+  offsets["_1_compliment_count"] = 4;
+#endif
 #else
 #error "Unexpected value of TESTING"
 #endif
@@ -1014,7 +1149,7 @@ int main(int argc, char *argv[]) {
     // 2: nested hashmap
     Hashmap *hashmap = BuildHashmap(pjh);
     if (hashmap) arr[index++] = hashmap;
-#elif (TESTING == 3 || TESTING == 5)
+#elif TESTING == 3
     // 3: flattened struct
     FlattenedStruct *fs = BuildFlattenedStruct(pjh);
     if (fs) arr[index++] = fs;
@@ -1036,22 +1171,51 @@ int main(int argc, char *argv[]) {
   std::cout << "#Normal Case Tweets: " << index << "\n";
 
   // Read a value from the data
-#ifdef TIMEACCESS
-  read_key_type *read_values = new read_key_type[index];
+#ifdef TIMEACCESSCOMPILETIME
+  read_key1_type *read_keys1 = new read_key1_type[index];
+  read_key2_type *read_keys2 = new read_key2_type[index];
   timer.reset();
   for (int i = 0; i < index; i++) {
 #if TESTING == 1
-    read_values[i] = ReadCJSONField(arr[i]);
+    read_keys2[i] = ReadCJSONField(arr[i], read_keys1[i]);
 #elif TESTING == 2
-    read_values[i] = ReadHashmapField(arr[i]);
+    read_keys2[i] = ReadHashmapField(arr[i], read_keys1[i]);
 #elif TESTING == 3
-    read_values[i] = ReadFlattenedStructField(arr[i]);
+    read_keys2[i] = ReadFlattenedStructField(arr[i], read_keys1[i]);
 #elif TESTING == 4
-    read_values[i] = ReadSerialIndexListField(arr[i]);
-#elif TESTING == 5
-    read_values[i] = ReadFlattenedStructFieldRT(arr[i]);
+    read_keys2[i] = ReadSerialIndexListField(arr[i], read_keys1[i]);
 #endif
-    // std::cout << "READ: " << read_values[i] << "\n";
+    std::cout << "READ: " << read_keys1[i] << ": " << read_keys2[i] << "\n";
+  }
+  double time_elapsed = timer.time();
+  std::cout << "Time: " << time_elapsed << "s\n";
+#endif
+
+#ifdef TIMEACCESSRUNTIME
+  read_key1_type *read_keys1 = new read_key1_type[index];
+  read_key2_type *read_keys2 = new read_key2_type[index];
+  std::vector<std::string> *keys1_runtime = new std::vector<std::string>[index];
+  std::vector<std::string> *keys2_runtime = new std::vector<std::string>[index];
+  for (int i = 0; i < index; i++) {
+    keys1_runtime[i] = key1_to_read;
+    keys2_runtime[i] = key2_to_read;
+  }
+  timer.reset();
+  for (int i = 0; i < index; i++) {
+#if TESTING == 1
+    read_keys2[i] = ReadCJSONFieldRT(arr[i], read_keys1[i], keys1_runtime[i],
+                                     keys2_runtime[i]);
+#elif TESTING == 2
+    read_keys2[i] = ReadHashmapFieldRT(arr[i], read_keys1[i], keys1_runtime[i],
+                                       keys2_runtime[i]);
+#elif TESTING == 3
+    read_keys2[i] = ReadFlattenedStructFieldRT(
+        arr[i], read_keys1[i], keys1_runtime[i], keys2_runtime[i]);
+#elif TESTING == 4
+    read_keys2[i] = ReadSerialIndexListFieldRT(
+        arr[i], read_keys1[i], keys1_runtime[i], keys2_runtime[i]);
+#endif
+    std::cout << "READ: " << read_keys1[i] << ": " << read_keys2[i] << "\n";
   }
   double time_elapsed = timer.time();
   std::cout << "Time: " << time_elapsed << "s\n";
@@ -1067,7 +1231,7 @@ int main(int argc, char *argv[]) {
     std::cout << "\nHashmap\n";
     PrintHashmap(((Hashmap **)arr)[i]);
     std::cout << "\n";
-#elif (TESTING == 3 || TESTING == 5)
+#elif TESTING == 3
     std::cout << "\nFlattened Struct\n";
     PrintFlattenedStruct(arr[i]);
     std::cout << "\n";

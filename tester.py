@@ -11,7 +11,7 @@ if __name__ == "__main__":
                 # compile and do warmup runs
                 subprocess.check_call(["./test.sh", "-{}".format(flag), str(version)])
                 # do actual runs and record
-                num_runs = 1 if flag != "m" else 1
+                num_runs = 3 if flag != "m" else 1
                 f.write("[")
                 for _ in range(num_runs):
                     txt = subprocess.check_output(["./prog"])
