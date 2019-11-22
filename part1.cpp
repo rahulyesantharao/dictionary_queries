@@ -45,12 +45,76 @@ class Timer {
 ///////////////////////////////////////////
 #ifdef MEMORY
 uint64_t total_mem_usage;
-bool track_mem = true;
-void *operator new(size_t size) {
-  if (track_mem) total_mem_usage += (uint64_t)size;
-  void *p = malloc(size);
-  return p;
+bool track_mem;
+
+// struct mem_list_node {
+// void *p;
+// uint64_t size;
+// struct mem_list_node *next;
+// struct mem_list_node *prev;
+//};
+
+// struct mem_list_node *mem_list;
+
+// void mem_list_delete(struct mem_list_node *node) {
+// if (node->prev) node->prev->next = node->next;
+// if (node->next) node->next->prev = node->prev;
+// if (node == mem_list) mem_list = node->next;
+// free(node);
+//}
+
+// void mem_list_insert(void *p, size_t size) {
+// struct mem_list_node *node =
+//(struct mem_list_node *)malloc(sizeof(struct mem_list_node));
+
+// node->p = p;
+// node->size = (uint64_t)size;
+// node->prev = nullptr;
+// node->next = mem_list;
+
+// if (mem_list) {
+// mem_list->prev = node;
+//}
+// mem_list = node;
+//}
+
+// uint64_t mem_list_find(void *p) {
+// struct mem_list_node *cur = mem_list;
+// while (cur) {
+// if (p == cur->p) {
+// uint64_t ret = cur->size;
+// mem_list_delete(cur);
+//// std::cout << "FOUND!\n";
+// return ret;
+//}
+// cur = cur->next;
+//}
+// return 0;
+//}
+
+// for cjson
+void *track_malloc(size_t size) {
+  void *p = malloc(size + sizeof(uint64_t));
+  if (track_mem) {
+    total_mem_usage += (uint64_t)size;
+    *(uint64_t *)p = (uint64_t)size;
+  } else {
+    *(uint64_t *)p = 0ULL;
+  }
+  return (void *)((char *)p + sizeof(uint64_t));
 }
+
+void track_free(void *p) {
+  if (!p) return;
+  uint64_t *size = (uint64_t *)((char *)p - sizeof(uint64_t));
+  total_mem_usage -= *size;
+  free((void *)size);
+}
+
+void *operator new(size_t size) { return track_malloc(size); }
+
+void operator delete(void *p) { return track_free(p); }
+
 #endif
 
 ///////////////////////////////////////////
@@ -1053,6 +1117,10 @@ read_key2_type ReadSerialIndexListFieldRT(SerialIndexList indices,
 }
 
 int main(int argc, char *argv[]) {
+#ifdef MEMORY
+  cJSON_Hooks hooks = {.malloc_fn = track_malloc, .free_fn = track_free};
+  cJSON_InitHooks(&hooks);
+#endif
 #ifndef TESTING
 #error Must define a value for TESTING
 #endif
@@ -1071,6 +1139,10 @@ int main(int argc, char *argv[]) {
   in.seekg(0, std::ios::beg);
 
   // Allocate space in memory for the data
+#ifdef MEMORY
+  total_mem_usage = 0;
+  track_mem = true;
+#endif
 #if TESTING == 1
   cJSON **arr;
   arr = new cJSON *[num_lines];
@@ -1121,6 +1193,9 @@ int main(int argc, char *argv[]) {
 #else
 #error "Unexpected value of TESTING"
 #endif
+#ifdef MEMORY
+  track_mem = false;
+#endif
 
   // parse the input objects one by one and read them
   int index = 0;
@@ -1140,6 +1215,9 @@ int main(int argc, char *argv[]) {
       return -1;
     }
 
+#ifdef MEMORY
+    track_mem = true;
+#endif
     // build the four representations
 #if TESTING == 1
     // 1: cJSON tree
@@ -1159,6 +1237,9 @@ int main(int argc, char *argv[]) {
     if (indices.second) arr[index++] = indices;
 #else
 #error "Invalid TESTING value"
+#endif
+#ifdef MEMORY
+    track_mem = false;
 #endif
   }
 #ifdef TIMEBUILD
@@ -1185,7 +1266,7 @@ int main(int argc, char *argv[]) {
 #elif TESTING == 4
     read_keys2[i] = ReadSerialIndexListField(arr[i], read_keys1[i]);
 #endif
-    std::cout << "READ: " << read_keys1[i] << ": " << read_keys2[i] << "\n";
+    // std::cout << "READ: " << read_keys1[i] << ": " << read_keys2[i] << "\n";
   }
   double time_elapsed = timer.time();
   std::cout << "Time: " << time_elapsed << "s\n";
@@ -1215,7 +1296,7 @@ int main(int argc, char *argv[]) {
     read_keys2[i] = ReadSerialIndexListFieldRT(
         arr[i], read_keys1[i], keys1_runtime[i], keys2_runtime[i]);
 #endif
-    std::cout << "READ: " << read_keys1[i] << ": " << read_keys2[i] << "\n";
+    // std::cout << "READ: " << read_keys1[i] << ": " << read_keys2[i] << "\n";
   }
   double time_elapsed = timer.time();
   std::cout << "Time: " << time_elapsed << "s\n";
