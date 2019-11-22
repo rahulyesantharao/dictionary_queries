@@ -94,21 +94,26 @@ bool track_mem;
 
 // for cjson
 void *track_malloc(size_t size) {
-  void *p = malloc(size + sizeof(uint64_t));
+  void *p = malloc(size + 2 * sizeof(uint64_t));
+  if(!p) return p;
   if (track_mem) {
     total_mem_usage += (uint64_t)size;
     *(uint64_t *)p = (uint64_t)size;
   } else {
     *(uint64_t *)p = 0ULL;
   }
-  return (void *)((char *)p + sizeof(uint64_t));
+  return (void *)((char *)p + 2 * sizeof(uint64_t));
 }
 
 void track_free(void *p) {
   if (!p) return;
-  uint64_t *size = (uint64_t *)((char *)p - sizeof(uint64_t));
+  uint64_t *size = (uint64_t *)((char *)p - 2 * sizeof(uint64_t));
   total_mem_usage -= *size;
   free((void *)size);
+}
+
+void *operator new(std::size_t size, const std::nothrow_t &nothrow_value) {
+  return track_malloc(size);
 }
 
 void *operator new(size_t size) { return track_malloc(size); }
