@@ -1,0 +1,21 @@
+build,dataset,type
+57.1888,Twitter,Tree
+57.1898,Twitter,Tree
+57.1881,Twitter,Tree
+57.1883,Twitter,Tree
+57.1873,Twitter,Tree
+57.1867,Twitter,Nested Hashmap
+57.1865,Twitter,Nested Hashmap
+57.1867,Twitter,Nested Hashmap
+57.1869,Twitter,Nested Hashmap
+57.1834,Twitter,Nested Hashmap
+57.1845,Twitter,Flattened Struct
+57.7147,Twitter,Flattened Struct
+57.1871,Twitter,Flattened Struct
+57.1836,Twitter,Flattened Struct
+57.1829,Twitter,Flattened Struct
+57.1727,Twitter,Indexed String
+57.1726,Twitter,Indexed String
+57.1719,Twitter,Indexed String
+57.249,Twitter,Indexed String
+57.1709,Twitter,Indexed String

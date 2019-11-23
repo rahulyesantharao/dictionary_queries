@@ -1,0 +1,21 @@
+c_access,dataset,type
+0.062366,Twitter,Tree
+0.0616148,Twitter,Tree
+0.062278,Twitter,Tree
+0.0613838,Twitter,Tree
+0.0618455,Twitter,Tree
+0.101,Twitter,Nested Hashmap
+0.101506,Twitter,Nested Hashmap
+0.101916,Twitter,Nested Hashmap
+0.104627,Twitter,Nested Hashmap
+0.101827,Twitter,Nested Hashmap
+0.0044942,Twitter,Flattened Struct
+0.00447554,Twitter,Flattened Struct
+0.00447261,Twitter,Flattened Struct
+0.00445409,Twitter,Flattened Struct
+0.00446725,Twitter,Flattened Struct
+0.0570707,Twitter,Indexed String
+0.0580557,Twitter,Indexed String
+0.0571887,Twitter,Indexed String
+0.0583836,Twitter,Indexed String
+0.0579322,Twitter,Indexed String

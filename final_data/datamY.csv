@@ -1,0 +1,5 @@
+memory,dataset,type
+0.683707,Yelp,Tree
+0.714907,Yelp,Nested Hashmap
+0.224107,Yelp,Flattened Struct
+0.496464,Yelp,Indexed String

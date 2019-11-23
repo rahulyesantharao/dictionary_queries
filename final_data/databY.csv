@@ -1,0 +1,21 @@
+build,dataset,type
+2.36471,Yelp,Tree
+2.38067,Yelp,Tree
+2.37754,Yelp,Tree
+2.36832,Yelp,Tree
+2.54293,Yelp,Tree
+2.56145,Yelp,Nested Hashmap
+2.57923,Yelp,Nested Hashmap
+2.56182,Yelp,Nested Hashmap
+2.558,Yelp,Nested Hashmap
+2.60272,Yelp,Nested Hashmap
+1.73682,Yelp,Flattened Struct
+1.69856,Yelp,Flattened Struct
+1.69471,Yelp,Flattened Struct
+1.69635,Yelp,Flattened Struct
+1.69722,Yelp,Flattened Struct
+2.4748,Yelp,Indexed String
+2.48134,Yelp,Indexed String
+2.47075,Yelp,Indexed String
+2.46985,Yelp,Indexed String
+2.48258,Yelp,Indexed String

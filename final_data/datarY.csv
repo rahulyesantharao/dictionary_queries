@@ -1,0 +1,21 @@
+r_access,dataset,type
+0.317303,Yelp,Tree
+0.316493,Yelp,Tree
+0.310789,Yelp,Tree
+0.315654,Yelp,Tree
+0.3091,Yelp,Tree
+0.314543,Yelp,Nested Hashmap
+0.316399,Yelp,Nested Hashmap
+0.317058,Yelp,Nested Hashmap
+0.310822,Yelp,Nested Hashmap
+0.316726,Yelp,Nested Hashmap
+0.383982,Yelp,Flattened Struct
+0.385804,Yelp,Flattened Struct
+0.385814,Yelp,Flattened Struct
+0.391013,Yelp,Flattened Struct
+0.386488,Yelp,Flattened Struct
+0.650184,Yelp,Indexed String
+0.653161,Yelp,Indexed String
+0.655272,Yelp,Indexed String
+0.651583,Yelp,Indexed String
+0.64955,Yelp,Indexed String
