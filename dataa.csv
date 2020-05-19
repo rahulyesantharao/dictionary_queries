@@ -1,0 +1,41 @@
+c_access,dataset,type
+0.062366,Twitter,Tree
+0.0616148,Twitter,Tree
+0.062278,Twitter,Tree
+0.0613838,Twitter,Tree
+0.0618455,Twitter,Tree
+0.101,Twitter,Nested Hashmap
+0.101506,Twitter,Nested Hashmap
+0.101916,Twitter,Nested Hashmap
+0.104627,Twitter,Nested Hashmap
+0.101827,Twitter,Nested Hashmap
+0.0044942,Twitter,Flattened Struct
+0.00447554,Twitter,Flattened Struct
+0.00447261,Twitter,Flattened Struct
+0.00445409,Twitter,Flattened Struct
+0.00446725,Twitter,Flattened Struct
+0.0570707,Twitter,Indexed String
+0.0580557,Twitter,Indexed String
+0.0571887,Twitter,Indexed String
+0.0583836,Twitter,Indexed String
+0.0579322,Twitter,Indexed String
+0.214756,Yelp,Tree
+0.216881,Yelp,Tree
+0.216023,Yelp,Tree
+0.216856,Yelp,Tree
+0.215532,Yelp,Tree
+0.258631,Yelp,Nested Hashmap
+0.259119,Yelp,Nested Hashmap
+0.255541,Yelp,Nested Hashmap
+0.255205,Yelp,Nested Hashmap
+0.262005,Yelp,Nested Hashmap
+0.02228,Yelp,Flattened Struct
+0.0219265,Yelp,Flattened Struct
+0.0221618,Yelp,Flattened Struct
+0.0221395,Yelp,Flattened Struct
+0.0219618,Yelp,Flattened Struct
+0.32086,Yelp,Indexed String
+0.319982,Yelp,Indexed String
+0.31826,Yelp,Indexed String
+0.320461,Yelp,Indexed String
+0.320925,Yelp,Indexed String

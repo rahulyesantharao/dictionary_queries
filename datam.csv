@@ -1,0 +1,9 @@
+memory,dataset,type
+0.187046,Twitter,Tree
+0.235814,Twitter,Nested Hashmap
+0.231967,Twitter,Flattened Struct
+0.114659,Twitter,Indexed String
+0.683707,Yelp,Tree
+0.714907,Yelp,Nested Hashmap
+0.224107,Yelp,Flattened Struct
+0.496464,Yelp,Indexed String
